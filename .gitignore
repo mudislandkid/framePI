@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+venv/
+*.db
+server_photos/
+*.log
+config.json
+.DS_Store
