@@ -1,3 +1,4 @@
+
 # Photo Frame
 
 A digital photo frame system with a centralized web server for managing photos and multiple Raspberry Pi clients for display. Built with Python, Flask, and Pygame.
@@ -33,52 +34,61 @@ A digital photo frame system with a centralized web server for managing photos a
 ### Server Installation
 
 1. Clone the repository:
-```bash
-git clone https://github.com/YOUR_USERNAME/photoframe.git
-```
+   ```bash
+   git clone https://github.com/mudislandkid/framePI.git
+   ```
 
 2. Run the install script:
-```bash
-cd photoframe
-sudo ./install.sh
-```
+   ```bash
+   cd framePI
+   sudo ./install.sh --mode <dev|prod>
+   ```
 
-The install script will:
-- Install required system packages
-- Set up Python virtual environment
-- Configure Nginx
-- Create system service
-- Set up initial database
-- Configure directories and permissions
+   Replace `<dev|prod>` with:
+   - `dev` for development mode: runs Flask server with debug enabled and sets host to `127.0.0.1`.
+   - `prod` for production mode: sets up Uvicorn with systemd and configures host as the external IP or FQDN.
+
+   The install script will:
+   - Update and upgrade the system
+   - Install required system packages
+   - Set up Python virtual environment
+   - Configure Nginx
+   - Create system service
+   - Set up initial database
+   - Configure directories and permissions
+
+3. Access the admin interface:
+   - In development mode: `http://127.0.0.1:5000/admin`
+   - In production mode: `http://<your-server-ip>/admin`
 
 ### Client Setup
 
 1. Install required packages on Raspberry Pi:
-```bash
-sudo apt update
-sudo apt install -y python3-pip python3-pygame x11-xserver-utils
-```
+   ```bash
+   sudo apt update
+   sudo apt install -y python3-pip python3-pygame x11-xserver-utils
+   ```
 
 2. Clone the client files:
-```bash
-mkdir -p ~/piFrame
-cd ~/piFrame
-# Copy client files from server or download from repository
-```
+   ```bash
+   mkdir -p ~/piFrame
+   cd ~/piFrame
+   # Copy client files from server or download from repository
+   ```
 
 3. Install Python requirements:
-```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-```
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate
+   pip install -r requirements.txt
+   ```
 
 4. Set up autostart service:
-```bash
-sudo cp systemd/photo_display.service /etc/systemd/system/
-sudo systemctl enable photo_display
-sudo systemctl start photo_display
-```
+   ```bash
+   sudo cp systemd/photo_display.service /etc/systemd/system/
+   sudo systemctl enable photo_display
+   sudo systemctl start photo_display
+   ```
 
 ## Configuration
 
@@ -106,15 +116,15 @@ The server configuration is stored in `config.json`:
 
 ### Client Configuration
 
-Client configuration is managed through the web interface at `http://your-server/admin/settings`
+Client configuration is managed through the web interface at `http://your-server/admin/settings`.
 
 ## Usage
 
-1. Access the admin interface at `http://your-server/admin`
-2. Upload photos through the web interface
-3. Configure display settings
-4. Monitor connected clients
-5. Manage photo organization and pairing
+1. Access the admin interface at `http://your-server/admin`.
+2. Upload photos through the web interface.
+3. Configure display settings.
+4. Monitor connected clients.
+5. Manage photo organization and pairing.
 
 ## Development
 
@@ -126,7 +136,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 # Run development server
-python api.py
+./run_dev.sh
 ```
 
 ### Client Development
@@ -148,27 +158,27 @@ DEV_MODE=1 python display.py
 ### Common Issues
 
 1. **Display Issues**
-   - Check X server is running
-   - Verify display resolution settings
-   - Check logs: `journalctl -u photo_display -f`
+   - Check X server is running.
+   - Verify display resolution settings.
+   - Check logs: `journalctl -u photo_display -f`.
 
 2. **Sync Issues**
-   - Verify network connectivity
-   - Check server URL configuration
-   - Check logs: `journalctl -u photo_display -f`
+   - Verify network connectivity.
+   - Check server URL configuration.
+   - Check logs: `journalctl -u photo_display -f`.
 
 3. **Permission Issues**
-   - Verify file permissions in photos directory
-   - Check service user permissions
-   - Review service logs
+   - Verify file permissions in photos directory.
+   - Check service user permissions.
+   - Review service logs.
 
 ## Contributing
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+1. Fork the repository.
+2. Create your feature branch (`git checkout -b feature/amazing-feature`).
+3. Commit your changes (`git commit -m 'Add amazing feature'`).
+4. Push to the branch (`git push origin feature/amazing-feature`).
+5. Open a Pull Request.
 
 ## License
 
@@ -178,7 +188,6 @@ This project is licensed under the GNU General Public License v3.0 - see the [LI
 
 ## Acknowledgments
 
-- Built using Flask for the web framework
-- Pygame for display handling
-- Pillow for image processing
-
+- Built using Flask for the web framework.
+- Pygame for display handling.
+- Pillow for image processing.
