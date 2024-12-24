@@ -151,6 +151,10 @@ fi
 # Set installation directory
 INSTALL_DIR="/opt/photoframe"
 
+# Update and upgrade the system
+print_status "Updating and upgrading the system..."
+apt-get update && apt-get upgrade -y
+
 # Create directory structure
 print_status "Creating directory structure..."
 mkdir -p $INSTALL_DIR
@@ -175,9 +179,20 @@ print_status "Setting up Python virtual environment..."
 python3 -m venv $INSTALL_DIR/venv
 source $INSTALL_DIR/venv/bin/activate
 
+# Create requirements file
+print_status "Creating requirements file..."
+cat > $INSTALL_DIR/requirements.txt << EOL
+flask
+pillow
+requests
+werkzeug
+gunicorn
+uvicorn
+EOL
+
 # Install Python requirements
-print_status "Installing Python requirements..."
-$INSTALL_DIR/venv/bin/pip install flask pillow requests werkzeug gunicorn uvicorn
+print_status "Installing Python requirements from requirements.txt..."
+$INSTALL_DIR/venv/bin/pip install -r $INSTALL_DIR/requirements.txt
 
 # Test virtual environment
 if ! test_virtualenv; then
