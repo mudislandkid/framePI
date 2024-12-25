@@ -169,7 +169,14 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 # Set installation directory
-INSTALL_DIR="/opt/photoframe"
+INSTALL_DIR="/opt/framePI"
+
+# Remove previous installation if exists
+if [ -d "$INSTALL_DIR" ]; then
+    print_warning "Previous installation detected. Removing..."
+    rm -rf "$INSTALL_DIR"
+    print_status "Previous installation removed."
+fi
 
 # Update and upgrade the system
 print_status "Updating and upgrading the system..."
@@ -182,6 +189,10 @@ mkdir -p $INSTALL_DIR/server_photos
 mkdir -p $INSTALL_DIR/logs
 mkdir -p $INSTALL_DIR/client
 mkdir -p $INSTALL_DIR/server
+
+# Copy server files
+print_status "Copying server files to installation directory..."
+cp -r ./server/* $INSTALL_DIR/server/
 
 # Check and install required system packages
 print_status "Checking and installing required system packages..."
@@ -244,7 +255,7 @@ else
     setup_fqdn_ssl
 
     # Create systemd service for Uvicorn
-    cat > /etc/systemd/system/photoframe.service << EOL
+    cat > /etc/systemd/system/framePI.service << EOL
 [Unit]
 Description=Photo Frame Server
 After=network.target
@@ -262,8 +273,8 @@ WantedBy=multi-user.target
 EOL
 
     systemctl daemon-reload
-    systemctl enable photoframe
-    systemctl restart photoframe
+    systemctl enable framePI
+    systemctl restart framePI
     print_status "Production setup complete! Server running at http://$host"
 fi
 
