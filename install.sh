@@ -29,6 +29,8 @@ update_config() {
     local host=$2
 
     if ! $INSTALL_DIR/venv/bin/python3 << EOF
+import sys
+sys.path.append('$INSTALL_DIR/server')
 from config import save_config, load_config
 config = load_config()
 config["DEV_MODE"] = $mode
@@ -36,11 +38,29 @@ config["HOST"] = "$host"
 save_config(config)
 EOF
     then
-        print_error "Failed to update config.py!"
+        print_error "Failed to update config.py! Ensure the config module is properly installed in $INSTALL_DIR/server."
         return 1
     fi
     print_status "Config updated: DEV_MODE=$mode, HOST=$host"
     return 0
+}
+
+# Function to prompt for FQDN and SSL setup
+setup_fqdn_ssl() {
+    read -p "Do you want to set up a Fully Qualified Domain Name (FQDN)? (y/n): " setup_fqdn
+    if [[ "$setup_fqdn" == "y" || "$setup_fqdn" == "Y" ]]; then
+        read -p "Enter your FQDN (e.g., example.com): " fqdn
+        if ! $INSTALL_DIR/venv/bin/python3 -c "import sys; sys.path.append('$INSTALL_DIR/server'); from config import update_fqdn; update_fqdn('$fqdn')"; then
+            print_error "Failed to configure FQDN in config.py!"
+            exit 1
+        fi
+        read -p "Do you want to set up SSL with Let's Encrypt for $fqdn? (y/n): " setup_ssl
+        if [[ "$setup_ssl" == "y" || "$setup_ssl" == "Y" ]]; then
+            setup_ssl "$fqdn"
+        fi
+    else
+        print_warning "Skipping FQDN and SSL setup."
+    fi
 }
 
 # Function to test Python virtual environment
@@ -161,6 +181,7 @@ mkdir -p $INSTALL_DIR
 mkdir -p $INSTALL_DIR/server_photos
 mkdir -p $INSTALL_DIR/logs
 mkdir -p $INSTALL_DIR/client
+mkdir -p $INSTALL_DIR/server
 
 # Check and install required system packages
 print_status "Checking and installing required system packages..."
@@ -218,6 +239,9 @@ else
     print_status "Configuring for production mode..."
     host=${DOMAIN:-$(hostname -I | awk '{print $1}')}
     update_config false "$host"
+
+    # Prompt for FQDN and SSL setup
+    setup_fqdn_ssl
 
     # Create systemd service for Uvicorn
     cat > /etc/systemd/system/photoframe.service << EOL
