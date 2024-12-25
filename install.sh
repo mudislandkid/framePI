@@ -23,6 +23,26 @@ check_command() {
     fi
 }
 
+# Function to set up SSL using Let's Encrypt
+setup_ssl() {
+    local fqdn=$1
+    print_status "Setting up SSL for $fqdn..."
+
+    # Install certbot if not already installed
+    if ! check_command "certbot"; then
+        print_status "Installing certbot..."
+        apt-get install -y certbot python3-certbot-nginx
+    fi
+
+    # Obtain SSL certificate
+    if certbot --nginx -d "$fqdn" --non-interactive --agree-tos --email "admin@$fqdn" --redirect; then
+        print_status "SSL setup complete for $fqdn."
+    else
+        print_error "Failed to obtain SSL certificate for $fqdn. Check your DNS settings and ensure ports 80 and 443 are open."
+        exit 1
+    fi
+}
+
 # Function to update config.py for mode and host
 update_config() {
     local mode=$1
