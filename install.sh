@@ -33,7 +33,7 @@ import sys
 sys.path.append('$INSTALL_DIR/server')
 from config import save_config, load_config
 config = load_config()
-config["DEV_MODE"] = $mode
+config["DEV_MODE"] = ${mode,,}  # Convert to Python's True/False
 config["HOST"] = "$host"
 save_config(config)
 EOF
@@ -235,7 +235,7 @@ fi
 # Configure based on mode
 if [[ "$MODE" == "dev" ]]; then
     print_status "Configuring for development mode..."
-    update_config true "127.0.0.1"
+    update_config True "127.0.0.1"
 
     # Create Flask run script
     cat > $INSTALL_DIR/run_dev.sh << EOL
@@ -249,7 +249,7 @@ EOL
 else
     print_status "Configuring for production mode..."
     host=${DOMAIN:-$(hostname -I | awk '{print $1}')}
-    update_config false "$host"
+    update_config False "$host"
 
     # Prompt for FQDN and SSL setup
     setup_fqdn_ssl
