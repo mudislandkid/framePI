@@ -168,8 +168,8 @@ test_api() {
     if [ $failed -eq 1 ]; then
         print_error "API tests failed!"
         print_info "Troubleshooting steps:"
-        print_info "1. Check if the application is running: sudo systemctl status photoframe"
-        print_info "2. Review server logs: sudo journalctl -u photoframe -f"
+        print_info "1. Check if the application is running: sudo systemctl status framePI"
+        print_info "2. Review server logs: sudo journalctl -u framePI -f"
         print_info "3. Verify Nginx configuration: sudo nginx -t"
         return 1
     fi
@@ -322,40 +322,41 @@ After=network.target
 [Service]
 User=www-data
 Group=www-data
-WorkingDirectory=$INSTALL_DIR
+WorkingDirectory=$INSTALL_DIR/server
 Environment="PATH=$INSTALL_DIR/venv/bin"
 ExecStart=$INSTALL_DIR/venv/bin/uvicorn api:app --host $host --port 80
-StandardOutput=append:$INSTALL_DIR/logs/uvicorn.log
-StandardError=append:$INSTALL_DIR/logs/uvicorn.log
 Restart=always
 
 [Install]
 WantedBy=multi-user.target
 EOL
 
+    # Reload systemd daemon and enable service
+    print_status "Reloading systemd daemon..."
     systemctl daemon-reload || {
         print_error "Failed to reload systemd daemon. Exiting."
         exit 1
     }
+    print_status "Enabling framePI service..."
     systemctl enable framePI || {
         print_error "Failed to enable framePI service. Exiting."
         exit 1
     }
+    print_status "Starting framePI service..."
     systemctl start framePI || {
-        print_error "Failed to start framePI service. Check logs at $INSTALL_DIR/logs/uvicorn.log"
+        print_error "Failed to start framePI service. Exiting."
         exit 1
     }
 
-    # Verify service status
+    # Test if the service is running
     if ! systemctl is-active --quiet framePI; then
-        print_error "framePI service failed to start. Check logs with: journalctl -u framePI"
+        print_error "framePI service failed to start. Check logs with: sudo journalctl -u framePI -f"
         exit 1
     fi
-
-    print_status "Production setup complete! Server running at http://$host"
-else
-    print_warning "Skipping systemd service setup for development mode."
+    print_status "framePI service is up and running."
 fi
 
-print_status "Installation complete!"
+# Final message
+print_status "Installation complete! You can access the server at http://${host} or https://${fqdn} if SSL was set up."
+exit 0
 
