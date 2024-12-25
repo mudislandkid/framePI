@@ -33,7 +33,7 @@ import sys
 sys.path.append('$INSTALL_DIR/server')
 from config import save_config, load_config
 config = load_config()
-config["DEV_MODE"] = ${mode,,}  # Convert to Python's True/False
+config["DEV_MODE"] = True if "$mode" == "True" else False
 config["HOST"] = "$host"
 save_config(config)
 EOF
