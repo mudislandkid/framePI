@@ -254,15 +254,31 @@ apt-get update && apt-get upgrade -y || {
 }
 
 # Create directory structure
-print_status "Creating directory structure..."
-mkdir -p $INSTALL_DIR || {
-    print_error "Failed to create installation directory. Exiting."
-    exit 1
-}
-mkdir -p $INSTALL_DIR/server_photos $INSTALL_DIR/logs $INSTALL_DIR/client $INSTALL_DIR/server || {
-    print_error "Failed to create required directories. Exiting."
-    exit 1
-}
+# Ensure the necessary directories exist with correct permissions
+print_status "Setting up required directories..."
+directories=(
+    "$INSTALL_DIR/server"
+    "$INSTALL_DIR/server/server_photos"
+    "$INSTALL_DIR/server/logs"
+)
+
+for dir in "${directories[@]}"; do
+    if [ ! -d "$dir" ]; then
+        mkdir -p "$dir" || {
+            print_error "Failed to create directory $dir. Exiting."
+            exit 1
+        }
+    fi
+    chown -R www-data:www-data "$dir" || {
+        print_error "Failed to set permissions for $dir. Exiting."
+        exit 1
+    }
+    chmod -R 755 "$dir" || {
+        print_error "Failed to set permissions for $dir. Exiting."
+        exit 1
+    }
+done
+
 
 # Copy server files
 print_status "Copying server files to installation directory..."
@@ -348,12 +364,19 @@ EOL
         exit 1
     }
 
-    # Test if the service is running
-    if ! systemctl is-active --quiet framePI; then
-        print_error "framePI service failed to start. Check logs with: sudo journalctl -u framePI -f"
+    print_status "Testing framePI service..."
+    if ! systemctl start framePI; then
+        print_error "Failed to start framePI service. Check logs: sudo journalctl -u framePI -f"
         exit 1
     fi
-    print_status "framePI service is up and running."
+
+    if ! systemctl is-active --quiet framePI; then
+        print_error "framePI service is not active. Check logs: sudo journalctl -u framePI -f"
+        exit 1
+    fi
+
+    print_status "framePI service started successfully."
+
 fi
 
 # Final message
