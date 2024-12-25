@@ -346,12 +346,13 @@ User=www-data
 Group=www-data
 WorkingDirectory=$INSTALL_DIR/server
 Environment="PATH=$INSTALL_DIR/venv/bin"
-ExecStart=$INSTALL_DIR/venv/bin/uvicorn api:app --host $host --port 80
+ExecStart=$INSTALL_DIR/venv/bin/uvicorn api:app --host 0.0.0.0 --port 80
 Restart=always
 
 [Install]
 WantedBy=multi-user.target
 EOL
+
 
     # Reload systemd daemon and enable service
     print_status "Reloading systemd daemon..."
