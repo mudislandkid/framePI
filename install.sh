@@ -78,6 +78,32 @@ setup_fqdn_ssl() {
         if [[ "$setup_ssl" == "y" || "$setup_ssl" == "Y" ]]; then
             setup_ssl "$fqdn"
         fi
+
+        # Update Nginx configuration
+        print_status "Configuring Nginx for FQDN..."
+        cat > /etc/nginx/sites-available/framePI << EOL
+server {
+    listen 80;
+    server_name $fqdn;
+
+    location / {
+        proxy_pass http://127.0.0.1:80;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    }
+
+    location /static {
+        root $INSTALL_DIR/server;
+    }
+}
+EOL
+        ln -sf /etc/nginx/sites-available/framePI /etc/nginx/sites-enabled/
+        systemctl restart nginx || {
+            print_error "Failed to restart Nginx. Check configuration and try again."
+            exit 1
+        }
+        print_status "Nginx configuration updated for $fqdn."
     else
         print_warning "Skipping FQDN and SSL setup."
     fi
@@ -200,39 +226,55 @@ fi
 
 # Update and upgrade the system
 print_status "Updating and upgrading the system..."
-apt-get update && apt-get upgrade -y
+apt-get update && apt-get upgrade -y || {
+    print_error "System update and upgrade failed. Exiting."
+    exit 1
+}
 
 # Create directory structure
 print_status "Creating directory structure..."
-mkdir -p $INSTALL_DIR
-mkdir -p $INSTALL_DIR/server_photos
-mkdir -p $INSTALL_DIR/logs
-mkdir -p $INSTALL_DIR/client
-mkdir -p $INSTALL_DIR/server
+mkdir -p $INSTALL_DIR || {
+    print_error "Failed to create installation directory. Exiting."
+    exit 1
+}
+mkdir -p $INSTALL_DIR/server_photos $INSTALL_DIR/logs $INSTALL_DIR/client $INSTALL_DIR/server || {
+    print_error "Failed to create required directories. Exiting."
+    exit 1
+}
 
 # Copy server files
 print_status "Copying server files to installation directory..."
-cp -r ./server/* $INSTALL_DIR/server/
+cp -r ./server/* $INSTALL_DIR/server/ || {
+    print_error "Failed to copy server files. Exiting."
+    exit 1
+}
 
 # Check and install required system packages
 print_status "Checking and installing required system packages..."
-apt-get update
-
 PACKAGES="python3 python3-pip python3-venv nginx git curl"
 for pkg in $PACKAGES; do
     if ! dpkg -l | grep -q "^ii  $pkg "; then
         print_status "Installing $pkg..."
-        apt-get install -y $pkg
+        apt-get install -y $pkg || {
+            print_error "Failed to install $pkg. Exiting."
+            exit 1
+        }
     fi
 done
 
 # Create virtual environment
 print_status "Setting up Python virtual environment..."
-python3 -m venv $INSTALL_DIR/venv
-source $INSTALL_DIR/venv/bin/activate
+python3 -m venv $INSTALL_DIR/venv || {
+    print_error "Failed to create Python virtual environment. Exiting."
+    exit 1
+}
+source $INSTALL_DIR/venv/bin/activate || {
+    print_error "Failed to activate Python virtual environment. Exiting."
+    exit 1
+}
 
-# Create requirements file
-print_status "Creating requirements file..."
+# Install Python requirements
+print_status "Installing Python requirements from requirements.txt..."
 cat > $INSTALL_DIR/requirements.txt << EOL
 flask
 pillow
@@ -241,14 +283,14 @@ werkzeug
 gunicorn
 uvicorn
 EOL
-
-# Install Python requirements
-print_status "Installing Python requirements from requirements.txt..."
-$INSTALL_DIR/venv/bin/pip install -r $INSTALL_DIR/requirements.txt
+$INSTALL_DIR/venv/bin/pip install -r $INSTALL_DIR/requirements.txt || {
+    print_error "Failed to install Python requirements. Exiting."
+    exit 1
+}
 
 # Test virtual environment
 if ! test_virtualenv; then
-    print_error "Virtual environment setup failed."
+    print_error "Virtual environment setup test failed. Exiting."
     exit 1
 fi
 
@@ -264,7 +306,10 @@ source $INSTALL_DIR/venv/bin/activate
 export FLASK_ENV=development
 flask run --host=127.0.0.1 --port=5000
 EOL
-    chmod +x $INSTALL_DIR/run_dev.sh
+    chmod +x $INSTALL_DIR/run_dev.sh || {
+        print_error "Failed to create development run script. Exiting."
+        exit 1
+    }
     print_status "Development setup complete! Run with: $INSTALL_DIR/run_dev.sh"
 else
     print_status "Configuring for production mode..."
@@ -275,6 +320,7 @@ else
     setup_fqdn_ssl
 
     # Create systemd service for Uvicorn
+    print_status "Setting up systemd service for Uvicorn..."
     cat > /etc/systemd/system/framePI.service << EOL
 [Unit]
 Description=Photo Frame Server
@@ -292,9 +338,18 @@ Restart=always
 WantedBy=multi-user.target
 EOL
 
-    systemctl daemon-reload
-    systemctl enable framePI
-    systemctl restart framePI
+    systemctl daemon-reload || {
+        print_error "Failed to reload systemd daemon. Exiting."
+        exit 1
+    }
+    systemctl enable framePI || {
+        print_error "Failed to enable framePI service. Exiting."
+        exit 1
+    }
+    systemctl restart framePI || {
+        print_error "Failed to restart framePI service. Exiting."
+        exit 1
+    }
     print_status "Production setup complete! Server running at http://$host"
 fi
 
