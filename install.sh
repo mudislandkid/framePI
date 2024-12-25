@@ -62,8 +62,17 @@ EOF
         return 1
     fi
     print_status "Config updated: DEV_MODE=$mode, HOST=$host"
+
+    # Update Uvicorn systemd service
+    sed -i "s|ExecStart=.*|ExecStart=$INSTALL_DIR/venv/bin/uvicorn api:app --host $host --port 80|" /etc/systemd/system/framePI.service
+    systemctl daemon-reload || {
+        print_error "Failed to reload systemd daemon after updating the service file."
+        exit 1
+    }
+    print_status "Uvicorn service updated to use host $host."
     return 0
 }
+
 
 # Function to prompt for FQDN and SSL setup
 setup_fqdn_ssl() {
