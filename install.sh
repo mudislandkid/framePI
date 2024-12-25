@@ -325,10 +325,16 @@ setup_fqdn_ssl
 # Configure systemd service for production
 if [[ "$MODE" == "prod" ]]; then
     print_status "Configuring for production mode..."
-    host=${fqdn:-$(hostname -I | awk '{print $1}')}
+    
+    # Enforce IPv4 and resolve FQDN or use default
+    host=${fqdn:-$(hostname -I | grep -m 1 "^[0-9]\+\.[0-9]\+\.[0-9]\+\.[0-9]\+$")}
+    if [[ -z "$host" ]]; then
+        print_error "Failed to resolve a valid IPv4 address for the host. Exiting."
+        exit 1
+    fi
     update_config False "$host"
 
-    # Create systemd service for Uvicorn
+    # Create systemd service for Uvicorn with IPv4 enforced
     print_status "Setting up systemd service for Uvicorn..."
     cat > /etc/systemd/system/framePI.service << EOL
 [Unit]
@@ -342,49 +348,36 @@ WorkingDirectory=$INSTALL_DIR/server
 Environment="PATH=$INSTALL_DIR/venv/bin"
 ExecStart=$INSTALL_DIR/venv/bin/uvicorn api:app --host $host --port 80
 Restart=always
-StandardOutput=journal
-StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
 EOL
 
-    # Grant permission for Uvicorn to bind to privileged ports
-    print_status "Granting Uvicorn permission to bind to privileged ports..."
-    system_python=$(readlink -f $(which python3))
-    setcap 'cap_net_bind_service=+ep' $system_python || {
-        print_error "Failed to grant port binding permissions. Exiting."
-        exit 1
-    }
-
-
-    # Reload systemd daemon and enable the service
+    # Reload systemd daemon and enable service
     print_status "Reloading systemd daemon..."
     systemctl daemon-reload || {
         print_error "Failed to reload systemd daemon. Exiting."
         exit 1
     }
-
     print_status "Enabling framePI service..."
     systemctl enable framePI || {
         print_error "Failed to enable framePI service. Exiting."
         exit 1
     }
-
-    # Start the service and validate it
     print_status "Starting framePI service..."
     systemctl start framePI || {
         print_error "Failed to start framePI service. Exiting."
         exit 1
     }
 
+    # Test if the service is running
     if ! systemctl is-active --quiet framePI; then
         print_error "framePI service failed to start. Check logs with: sudo journalctl -u framePI -f"
         exit 1
     fi
-
     print_status "framePI service is up and running."
 fi
+
 
 # Final message
 print_status "Installation complete! You can access the server at http://${host} or https://${fqdn} if SSL was set up."
