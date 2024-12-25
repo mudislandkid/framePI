@@ -351,10 +351,12 @@ EOL
 
     # Grant permission for Uvicorn to bind to privileged ports
     print_status "Granting Uvicorn permission to bind to privileged ports..."
-    setcap 'cap_net_bind_service=+ep' $INSTALL_DIR/venv/bin/python3 || {
+    system_python=$(readlink -f $(which python3))
+    setcap 'cap_net_bind_service=+ep' $system_python || {
         print_error "Failed to grant port binding permissions. Exiting."
         exit 1
     }
+
 
     # Reload systemd daemon and enable the service
     print_status "Reloading systemd daemon..."
