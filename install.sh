@@ -220,6 +220,28 @@ INSTALL_DIR="/opt/framePI"
 # Remove previous installation if exists
 if [ -d "$INSTALL_DIR" ]; then
     print_warning "Previous installation detected. Removing..."
+    if systemctl is-active --quiet framePI; then
+        print_status "Stopping existing framePI service..."
+        systemctl stop framePI || {
+            print_error "Failed to stop existing framePI service. Exiting."
+            exit 1
+        }
+    fi
+    print_status "Disabling existing framePI service..."
+    systemctl disable framePI || {
+        print_error "Failed to disable existing framePI service. Exiting."
+        exit 1
+    }
+    print_status "Removing existing framePI service..."
+    rm -f /etc/systemd/system/framePI.service || {
+        print_error "Failed to remove existing framePI service file. Exiting."
+        exit 1
+    }
+    print_status "Reloading systemd daemon..."
+    systemctl daemon-reload || {
+        print_error "Failed to reload systemd daemon after service removal. Exiting."
+        exit 1
+    }
     rm -rf "$INSTALL_DIR"
     print_status "Previous installation removed."
 fi
@@ -249,20 +271,7 @@ cp -r ./server/* $INSTALL_DIR/server/ || {
     exit 1
 }
 
-# Check and install required system packages
-print_status "Checking and installing required system packages..."
-PACKAGES="python3 python3-pip python3-venv nginx git curl"
-for pkg in $PACKAGES; do
-    if ! dpkg -l | grep -q "^ii  $pkg "; then
-        print_status "Installing $pkg..."
-        apt-get install -y $pkg || {
-            print_error "Failed to install $pkg. Exiting."
-            exit 1
-        }
-    fi
-done
-
-# Create virtual environment
+# Set up Python virtual environment
 print_status "Setting up Python virtual environment..."
 python3 -m venv $INSTALL_DIR/venv || {
     print_error "Failed to create Python virtual environment. Exiting."
@@ -290,33 +299,17 @@ $INSTALL_DIR/venv/bin/pip install -r $INSTALL_DIR/requirements.txt || {
 
 # Test virtual environment
 if ! test_virtualenv; then
-    print_error "Virtual environment setup test failed. Exiting."
+    print_error "Virtual environment setup failed. Exiting."
     exit 1
 fi
 
 # Prompt for FQDN and SSL setup
 setup_fqdn_ssl
 
-# Configure based on mode
-if [[ "$MODE" == "dev" ]]; then
-    print_status "Configuring for development mode..."
-    update_config True "127.0.0.1"
-
-    # Create Flask run script
-    cat > $INSTALL_DIR/run_dev.sh << EOL
-#!/bin/bash
-source $INSTALL_DIR/venv/bin/activate
-export FLASK_ENV=development
-flask run --host=127.0.0.1 --port=5000
-EOL
-    chmod +x $INSTALL_DIR/run_dev.sh || {
-        print_error "Failed to create development run script. Exiting."
-        exit 1
-    }
-    print_status "Development setup complete! Run with: $INSTALL_DIR/run_dev.sh"
-else
+# Configure systemd service for production
+if [[ "$MODE" == "prod" ]]; then
     print_status "Configuring for production mode..."
-    host=${DOMAIN:-$(hostname -I | awk '{print $1}')}
+    host=${fqdn:-$(hostname -I | awk '{print $1}')}
     update_config False "$host"
 
     # Create systemd service for Uvicorn
@@ -332,6 +325,8 @@ Group=www-data
 WorkingDirectory=$INSTALL_DIR
 Environment="PATH=$INSTALL_DIR/venv/bin"
 ExecStart=$INSTALL_DIR/venv/bin/uvicorn api:app --host $host --port 80
+StandardOutput=append:$INSTALL_DIR/logs/uvicorn.log
+StandardError=append:$INSTALL_DIR/logs/uvicorn.log
 Restart=always
 
 [Install]
@@ -346,11 +341,21 @@ EOL
         print_error "Failed to enable framePI service. Exiting."
         exit 1
     }
-    systemctl restart framePI || {
-        print_error "Failed to restart framePI service. Exiting."
+    systemctl start framePI || {
+        print_error "Failed to start framePI service. Check logs at $INSTALL_DIR/logs/uvicorn.log"
         exit 1
     }
+
+    # Verify service status
+    if ! systemctl is-active --quiet framePI; then
+        print_error "framePI service failed to start. Check logs with: journalctl -u framePI"
+        exit 1
+    fi
+
     print_status "Production setup complete! Server running at http://$host"
+else
+    print_warning "Skipping systemd service setup for development mode."
 fi
 
-exit 0
+print_status "Installation complete!"
+
