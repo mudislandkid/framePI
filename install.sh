@@ -23,48 +23,6 @@ check_command() {
     fi
 }
 
-# Function to set up SSL using Let's Encrypt
-setup_ssl() {
-    local fqdn=$1
-    print_status "Setting up SSL for $fqdn..."
-
-    # Install certbot if not already installed
-    if ! check_command "certbot"; then
-        print_status "Installing certbot..."
-        apt-get install -y certbot python3-certbot-nginx
-    fi
-
-    # Obtain SSL certificate
-    if certbot --nginx -d "$fqdn" --non-interactive --agree-tos --email "admin@$fqdn" --redirect; then
-        print_status "SSL setup complete for $fqdn."
-    else
-        print_error "Failed to obtain SSL certificate for $fqdn. Check your DNS settings and ensure ports 80 and 443 are open."
-        exit 1
-    fi
-}
-
-# Function to update config.py for mode and host
-update_config() {
-    local mode=$1
-    local host=$2
-
-    if ! $INSTALL_DIR/venv/bin/python3 << EOF
-import sys
-sys.path.append('$INSTALL_DIR/server')
-from config import save_config, load_config
-config = load_config()
-config["DEV_MODE"] = True if "$mode" == "True" else False
-config["HOST"] = "$host"
-save_config(config)
-EOF
-    then
-        print_error "Failed to update config.py! Ensure the config module is properly installed in $INSTALL_DIR/server."
-        return 1
-    fi
-    print_status "Config updated: DEV_MODE=$mode, HOST=$host"
-    return 0
-}
-
 # Function to configure Nginx
 configure_nginx() {
     local fqdn=$1
@@ -75,8 +33,10 @@ configure_nginx() {
 server {
     listen 80;
     listen [::]:80;
-    server_name $fqdn;
+    server_name ${fqdn:-_};
 
+    client_max_body_size 50M;
+    
     location / {
         proxy_pass http://127.0.0.1:8000;
         proxy_set_header Host \$host;
@@ -87,12 +47,23 @@ server {
 
     location /static {
         alias $INSTALL_DIR/server/static;
+        expires 30d;
+        add_header Cache-Control "public, no-transform";
+    }
+
+    location /uploads {
+        alias $INSTALL_DIR/server/uploads;
+        expires 7d;
+        add_header Cache-Control "public, no-transform";
     }
 }
 EOL
 
     # Enable the site
     ln -sf /etc/nginx/sites-available/framePI /etc/nginx/sites-enabled/
+
+    # Remove default site if it exists
+    rm -f /etc/nginx/sites-enabled/default
     
     # Test Nginx configuration
     if ! nginx -t; then
@@ -138,7 +109,29 @@ setup_ssl() {
     fi
 }
 
-# Updated function to handle FQDN and SSL setup
+# Function to update config.py for mode and host
+update_config() {
+    local mode=$1
+    local host=$2
+
+    if ! $INSTALL_DIR/venv/bin/python3 << EOF
+import sys
+sys.path.append('$INSTALL_DIR/server')
+from config import save_config, load_config
+config = load_config()
+config["DEV_MODE"] = True if "$mode" == "True" else False
+config["HOST"] = "$host"
+save_config(config)
+EOF
+    then
+        print_error "Failed to update config.py! Ensure the config module is properly installed in $INSTALL_DIR/server."
+        return 1
+    fi
+    print_status "Config updated: DEV_MODE=$mode, HOST=$host"
+    return 0
+}
+
+# Function to handle FQDN and SSL setup
 setup_fqdn_ssl() {
     read -p "Do you want to set up a Fully Qualified Domain Name (FQDN)? (y/n): " setup_fqdn
     if [[ "$setup_fqdn" == "y" || "$setup_fqdn" == "Y" ]]; then
@@ -284,36 +277,38 @@ INSTALL_DIR="/opt/framePI"
 # Remove previous installation if exists
 if [ -d "$INSTALL_DIR" ]; then
     print_warning "Previous installation detected. Removing..."
-    if systemctl is-active --quiet framePI; then
-        print_status "Stopping existing framePI service..."
-        systemctl stop framePI || {
-            print_error "Failed to stop existing framePI service. Exiting."
-            exit 1
-        }
-    fi
-    print_status "Disabling existing framePI service..."
-    systemctl disable framePI || {
-        print_error "Failed to disable existing framePI service. Exiting."
-        exit 1
-    }
-    print_status "Removing existing framePI service..."
-    rm -f /etc/systemd/system/framePI.service || {
-        print_error "Failed to remove existing framePI service file. Exiting."
-        exit 1
-    }
-    print_status "Reloading systemd daemon..."
-    systemctl daemon-reload || {
-        print_error "Failed to reload systemd daemon after service removal. Exiting."
-        exit 1
-    }
+    
+    # Stop services if running
+    systemctl stop framePI nginx || true
+    
+    # Disable services
+    systemctl disable framePI nginx || true
+    
+    # Remove service files
+    rm -f /etc/systemd/system/framePI.service
+    rm -f /etc/nginx/sites-enabled/framePI
+    rm -f /etc/nginx/sites-available/framePI
+    
+    # Reload systemd daemon
+    systemctl daemon-reload
+    
+    # Remove installation directory
     rm -rf "$INSTALL_DIR"
+    
     print_status "Previous installation removed."
 fi
 
 # Update and upgrade the system
 print_status "Updating and upgrading the system..."
-apt-get update && apt-get upgrade -y || {
-    print_error "System update and upgrade failed. Exiting."
+apt-get update || {
+    print_error "System update failed. Exiting."
+    exit 1
+}
+
+# Install required packages
+print_status "Installing required packages..."
+apt-get install -y python3-venv python3-dev nginx sqlite3 || {
+    print_error "Failed to install required packages. Exiting."
     exit 1
 }
 
@@ -321,7 +316,8 @@ apt-get update && apt-get upgrade -y || {
 print_status "Setting up required directories..."
 directories=(
     "$INSTALL_DIR/server"
-    "$INSTALL_DIR/server/uploads"  # Single uploads directory
+    "$INSTALL_DIR/server/uploads"
+    "$INSTALL_DIR/server/static"
     "$INSTALL_DIR/server/logs"
 )
 
@@ -342,7 +338,6 @@ for dir in "${directories[@]}"; do
     }
 done
 
-
 # Copy server files
 print_status "Copying server files to installation directory..."
 cp -r ./server/* $INSTALL_DIR/server/ || {
@@ -362,7 +357,7 @@ source $INSTALL_DIR/venv/bin/activate || {
 }
 
 # Install Python requirements
-print_status "Installing Python requirements from requirements.txt..."
+print_status "Installing Python requirements..."
 cat > $INSTALL_DIR/requirements.txt << EOL
 flask
 pillow
@@ -370,7 +365,9 @@ requests
 werkzeug
 gunicorn
 uvicorn
+python-dotenv
 EOL
+
 $INSTALL_DIR/venv/bin/pip install -r $INSTALL_DIR/requirements.txt || {
     print_error "Failed to install Python requirements. Exiting."
     exit 1
@@ -385,7 +382,7 @@ fi
 # Prompt for FQDN and SSL setup
 setup_fqdn_ssl
 
-# Configure systemd service for production
+# Configure for production
 if [[ "$MODE" == "prod" ]]; then
     print_status "Configuring for production mode..."
     
@@ -397,54 +394,115 @@ if [[ "$MODE" == "prod" ]]; then
     fi
     update_config False "$host"
 
-    # Create systemd service for Uvicorn with IPv4 enforced
-    print_status "Setting up systemd service for Uvicorn..."
+    # Create log files
+    print_status "Setting up log files..."
+    touch /var/log/framePI.log /var/log/framePI.error.log
+    chown www-data:www-data /var/log/framePI.log /var/log/framePI.error.log
+
+# Create systemd service
+    print_status "Setting up systemd service..."
     cat > /etc/systemd/system/framePI.service << EOL
 [Unit]
 Description=Photo Frame Server
 After=network.target
+Requires=nginx.service
 
 [Service]
 User=www-data
 Group=www-data
 WorkingDirectory=$INSTALL_DIR/server
 Environment="PATH=$INSTALL_DIR/venv/bin"
-ExecStart=$INSTALL_DIR/venv/bin/uvicorn api:app --host 0.0.0.0 --port 80
+ExecStart=$INSTALL_DIR/venv/bin/uvicorn api:app --host 127.0.0.1 --port 8000
 Restart=always
+StandardOutput=append:/var/log/framePI.log
+StandardError=append:/var/log/framePI.error.log
 
 [Install]
 WantedBy=multi-user.target
 EOL
 
+    # Start services
+    print_status "Starting services..."
+    systemctl daemon-reload
+    
+    # Stop services if running
+    systemctl stop framePI nginx
+    
+    # Start and enable services in correct order
+    systemctl enable nginx
+    systemctl start nginx
+    systemctl enable framePI
+    systemctl start framePI
 
-    # Reload systemd daemon and enable service
-    print_status "Reloading systemd daemon..."
-    systemctl daemon-reload || {
-        print_error "Failed to reload systemd daemon. Exiting."
-        exit 1
-    }
-    print_status "Enabling framePI service..."
-    systemctl enable framePI || {
-        print_error "Failed to enable framePI service. Exiting."
-        exit 1
-    }
-    print_status "Starting framePI service..."
-    systemctl start framePI || {
-        print_error "Failed to start framePI service. Exiting."
-        exit 1
-    }
-
-    # Test if the service is running
-    if ! systemctl is-active --quiet framePI; then
-        print_error "framePI service failed to start. Check logs with: sudo journalctl -u framePI -f"
+    # Verify services
+    if ! systemctl is-active --quiet nginx; then
+        print_error "Nginx failed to start. Check logs with: journalctl -u nginx"
         exit 1
     fi
-    print_status "framePI service is up and running."
+
+    if ! systemctl is-active --quiet framePI; then
+        print_error "framePI service failed to start. Check logs with: journalctl -u framePI -f"
+        exit 1
+    fi
+
+    print_status "All services started successfully"
+
+    # Test API endpoints
+    print_status "Testing API endpoints..."
+    sleep 5  # Give the service a moment to fully start
+    if ! test_api; then
+        print_warning "API endpoint tests failed. Please check the logs and configuration."
+    fi
 fi
 
+# Final verification and information
+print_status "Verifying installation..."
 
-# Final message
-print_status "Installation complete! You can access the server at http://${host} or https://${fqdn} if SSL was set up."
+# Check directory permissions
+if [ ! -w "$INSTALL_DIR/server/uploads" ]; then
+    print_warning "Uploads directory may have incorrect permissions. Running fix..."
+    chown -R www-data:www-data "$INSTALL_DIR/server/uploads"
+    chmod -R 755 "$INSTALL_DIR/server/uploads"
+fi
+
+# Check log files
+if [ ! -f "/var/log/framePI.log" ]; then
+    print_warning "Log file not found. Creating..."
+    touch /var/log/framePI.log /var/log/framePI.error.log
+    chown www-data:www-data /var/log/framePI.log /var/log/framePI.error.log
+fi
+
+# Print installation summary
+print_status "Installation Summary:"
+echo "--------------------"
+echo "Installation Directory: $INSTALL_DIR"
+echo "Mode: $MODE"
+echo "Host: ${host:-localhost}"
+if [ ! -z "$fqdn" ]; then
+    echo "FQDN: $fqdn"
+    echo "SSL: ${setup_ssl_prompt:-no}"
+fi
+echo "Logs: /var/log/framePI.log"
+echo "Error Logs: /var/log/framePI.error.log"
+echo "--------------------"
+
+# Print access information
+if [ ! -z "$fqdn" ]; then
+    print_status "You can access the server at:"
+    print_info "http://${fqdn}"
+    if [[ "$setup_ssl_prompt" == "y" || "$setup_ssl_prompt" == "Y" ]]; then
+        print_info "https://${fqdn}"
+    fi
+else
+    print_status "You can access the server at: http://${host:-localhost}"
+fi
+
+# Print helpful commands
+print_info "Useful commands:"
+echo "  - View application logs: sudo journalctl -u framePI -f"
+echo "  - View nginx logs: sudo tail -f /var/log/nginx/error.log"
+echo "  - Restart application: sudo systemctl restart framePI"
+echo "  - Check status: sudo systemctl status framePI"
+
+print_status "Installation complete!"
 exit 0
-
-
