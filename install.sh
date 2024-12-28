@@ -65,47 +65,111 @@ EOF
     return 0
 }
 
-# Function to prompt for FQDN and SSL setup
+# Function to configure Nginx
+configure_nginx() {
+    local fqdn=$1
+    print_status "Configuring Nginx for FQDN..."
+    
+    # Create initial Nginx configuration
+    cat > /etc/nginx/sites-available/framePI << EOL
+server {
+    listen 80;
+    listen [::]:80;
+    server_name $fqdn;
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+
+    location /static {
+        alias $INSTALL_DIR/server/static;
+    }
+}
+EOL
+
+    # Enable the site
+    ln -sf /etc/nginx/sites-available/framePI /etc/nginx/sites-enabled/
+    
+    # Test Nginx configuration
+    if ! nginx -t; then
+        print_error "Nginx configuration test failed!"
+        return 1
+    fi
+    
+    # Restart Nginx
+    systemctl restart nginx
+    if [ $? -ne 0 ]; then
+        print_error "Failed to restart Nginx"
+        return 1
+    fi
+    
+    print_status "Nginx configuration completed successfully"
+    return 0
+}
+
+# Function to set up SSL using Let's Encrypt
+setup_ssl() {
+    local fqdn=$1
+    print_status "Setting up SSL for $fqdn..."
+
+    # Install certbot if not already installed
+    if ! check_command "certbot"; then
+        print_status "Installing certbot..."
+        apt-get update
+        apt-get install -y certbot python3-certbot-nginx
+    fi
+
+    # Stop Nginx temporarily to free up port 80
+    systemctl stop nginx
+
+    # Obtain SSL certificate
+    if certbot --nginx -d "$fqdn" --non-interactive --agree-tos --email "admin@$fqdn" --redirect; then
+        print_status "SSL setup complete for $fqdn"
+        systemctl start nginx
+        return 0
+    else
+        print_error "Failed to obtain SSL certificate for $fqdn"
+        systemctl start nginx
+        return 1
+    fi
+}
+
+# Updated function to handle FQDN and SSL setup
 setup_fqdn_ssl() {
     read -p "Do you want to set up a Fully Qualified Domain Name (FQDN)? (y/n): " setup_fqdn
     if [[ "$setup_fqdn" == "y" || "$setup_fqdn" == "Y" ]]; then
         read -p "Enter your FQDN (e.g., example.com): " fqdn
+        
+        # Update Python configuration with FQDN
         if ! $INSTALL_DIR/venv/bin/python3 -c "import sys; sys.path.append('$INSTALL_DIR/server'); from config import update_fqdn; update_fqdn('$fqdn')"; then
             print_error "Failed to configure FQDN in config.py!"
             exit 1
         fi
-        read -p "Do you want to set up SSL with Let's Encrypt for $fqdn? (y/n): " setup_ssl
-        if [[ "$setup_ssl" == "y" || "$setup_ssl" == "Y" ]]; then
-            setup_ssl "$fqdn"
+
+        # Configure Nginx first
+        if ! configure_nginx "$fqdn"; then
+            print_error "Failed to configure Nginx. Exiting."
+            exit 1
         fi
 
-        # Update Nginx configuration
-        print_status "Configuring Nginx for FQDN..."
-        cat > /etc/nginx/sites-available/framePI << EOL
-server {
-    listen 80;
-    server_name $fqdn;
-
-    location / {
-        proxy_pass http://127.0.0.1:80;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-    }
-
-    location /static {
-        root $INSTALL_DIR/server;
-    }
-}
-EOL
-        ln -sf /etc/nginx/sites-available/framePI /etc/nginx/sites-enabled/
-        systemctl restart nginx || {
-            print_error "Failed to restart Nginx. Check configuration and try again."
-            exit 1
-        }
-        print_status "Nginx configuration updated for $fqdn."
+        # Ask about SSL setup
+        read -p "Do you want to set up SSL with Let's Encrypt for $fqdn? (y/n): " setup_ssl_prompt
+        if [[ "$setup_ssl_prompt" == "y" || "$setup_ssl_prompt" == "Y" ]]; then
+            if ! setup_ssl "$fqdn"; then
+                print_warning "SSL setup failed. You can try setting it up manually later using:"
+                print_info "sudo certbot --nginx -d $fqdn"
+            fi
+        else
+            print_warning "Skipping SSL setup."
+        fi
     else
         print_warning "Skipping FQDN and SSL setup."
+        # Configure Nginx with default configuration
+        configure_nginx "localhost"
     fi
 }
 
