@@ -8,8 +8,8 @@ CONFIG_FILE = os.path.join(BASE_DIR, 'settings.json')
 # Default configuration values
 DEFAULT_CONFIG = {
     "DEV_MODE": False,
-    "UPLOAD_FOLDER": os.path.join(BASE_DIR, 'server_photos'),
-    "DATABASE": os.path.join(BASE_DIR, 'dev_photo_frame.db'),
+    "UPLOAD_FOLDER": os.path.join(BASE_DIR, 'uploads'),  # Changed to single uploads directory
+    "DATABASE": os.path.join(BASE_DIR, 'photo_frame.db'),  # Removed dev vs prod distinction
     "HOST": 'localhost',  # Default to localhost, updated if FQDN is provided
     "PORT": 5000,
     "ALLOWED_EXTENSIONS": ["png", "jpg", "jpeg"],

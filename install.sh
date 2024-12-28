@@ -318,11 +318,10 @@ apt-get update && apt-get upgrade -y || {
 }
 
 # Create directory structure
-# Ensure the necessary directories exist with correct permissions
 print_status "Setting up required directories..."
 directories=(
     "$INSTALL_DIR/server"
-    "$INSTALL_DIR/server/server_photos"
+    "$INSTALL_DIR/server/uploads"  # Single uploads directory
     "$INSTALL_DIR/server/logs"
 )
 
