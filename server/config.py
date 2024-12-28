@@ -22,8 +22,8 @@ DEFAULT_CONFIG = {
     "PORTRAIT_GAP": 20,
     "SORT_MODE": "random",
     "CLIENT_VERSION": {
-        "display.py": "1.0.4",
-        "sync_client.py": "1.0.4"
+        "display.py": "1.0.5",
+        "sync_client.py": "1.0.5"
     }
 }
 

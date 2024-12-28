@@ -1,0 +1,24 @@
+{
+    "DEV_MODE": false,
+    "UPLOAD_FOLDER": "/Users/greg/Documents/Photo Frame/server/server_photos",
+    "DATABASE": "/Users/greg/Documents/Photo Frame/server/dev_photo_frame.db",
+    "HOST": "192.168.178.164",
+    "PORT": 5000,
+    "ALLOWED_EXTENSIONS": [
+        "png",
+        "jpg",
+        "jpeg"
+    ],
+    "MAX_CONTENT_LENGTH": 52428800,
+    "SECRET_KEY": "dev",
+    "MATTING_MODE": "auto",
+    "DISPLAY_TIME": 25.0,
+    "TRANSITION_SPEED": 10.0,
+    "ENABLE_PORTRAIT_PAIRS": true,
+    "PORTRAIT_GAP": 20,
+    "SORT_MODE": "random",
+    "CLIENT_VERSION": {
+        "display.py": "1.0.5",
+        "sync_client.py": "1.0.5"
+    }
+}

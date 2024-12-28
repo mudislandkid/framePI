@@ -2,14 +2,14 @@ import pygame
 import sys
 import time
 import os
-from PIL import Image
+from PIL import Image, ImageOps
 import numpy as np
 from sync_client import PhotoFrameSync
 import threading
 import requests
 import subprocess
 
-__version__ = "1.0.4"
+__version__ = "1.0.5"
 
 class PhotoDisplay:
     def __init__(self):
@@ -280,8 +280,15 @@ class PhotoDisplay:
         try:
             if isinstance(photo_paths, tuple) and photo_paths[1] and self.config['enable_portrait_pairs']:
                 main_path, paired_path = photo_paths
-                main_image = Image.open(main_path).convert('RGB')
-                paired_image = Image.open(paired_path).convert('RGB')
+                main_image = Image.open(main_path)
+                paired_image = Image.open(paired_path)
+
+                # Correct orientation based on EXIF data
+                main_image = ImageOps.exif_transpose(main_image)
+                paired_image = ImageOps.exif_transpose(paired_image)
+
+                main_image = main_image.convert('RGB')
+                paired_image = paired_image.convert('RGB')
 
                 available_width = (self.WIDTH - self.config['portrait_gap']) // 2
                 available_height = self.HEIGHT
@@ -316,7 +323,12 @@ class PhotoDisplay:
                 return [main_surface, paired_surface], self.get_background_color(main_image)
 
             else:
-                image = Image.open(photo_paths[0]).convert('RGB')
+                image = Image.open(photo_paths[0])
+
+                # Correct orientation based on EXIF data
+                image = ImageOps.exif_transpose(image)
+                image = image.convert('RGB')
+
                 scale = min(self.WIDTH / image.size[0], self.HEIGHT / image.size[1])
                 image = image.resize((
                     int(image.size[0] * scale),

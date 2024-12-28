@@ -7,7 +7,7 @@ import logging
 from datetime import datetime
 import uuid
 import sqlite3
-from PIL import Image
+from PIL import Image, ImageOps
 import sys
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
@@ -15,7 +15,7 @@ import subprocess
 
 DEFAULT_SERVER_URL = 'http://192.168.178.164:5000'
 
-__version__ = "1.0.4"
+__version__ = "1.0.5"
 
 class PowerControlHandler(BaseHTTPRequestHandler):
     def do_POST(self):
@@ -325,11 +325,13 @@ class PhotoFrameSync:
         """Get image dimensions and determine if it's portrait"""
         try:
             with Image.open(file_path) as img:
+                img = ImageOps.exif_transpose(img)  # Correct orientation
                 width, height = img.size
                 return width, height, height > width
         except Exception as e:
             self.logger.error(f"Error getting image dimensions: {e}")
             return 0, 0, False
+
         
     def check_for_updates(self):
         """Check and apply code updates"""
@@ -403,8 +405,12 @@ def main():
     """Main function to run the sync client"""
     syncer = PhotoFrameSync()
     while True:
-        syncer.sync()
-        time.sleep(syncer.sync_interval)
+        try:
+            syncer.sync()  # Perform a sync with the server
+        except Exception as e:
+            print(f"Error during synchronization: {e}")
+        time.sleep(syncer.sync_interval)  # Wait for the defined interval
+
 
 
 

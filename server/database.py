@@ -2,7 +2,7 @@ import sqlite3
 import os
 import hashlib
 from datetime import datetime
-from PIL import Image
+from PIL import Image, ImageOps
 from config import load_config
 
 class DatabaseManager:
@@ -95,9 +95,10 @@ class DatabaseManager:
 
     @staticmethod
     def get_image_dimensions(file_path):
-        """Get image dimensions and determine if it's portrait"""
+        """Get image dimensions and determine if it's portrait, with EXIF correction."""
         try:
             with Image.open(file_path) as img:
+                img = ImageOps.exif_transpose(img)  # Correct orientation
                 width, height = img.size
                 is_portrait = height > width
                 return width, height, is_portrait
@@ -105,15 +106,23 @@ class DatabaseManager:
             print(f"Error getting image dimensions: {e}")
             return 0, 0, False
 
+
     @staticmethod
     def add_photo(filename, original_filename, file_path):
-        """Add a new photo to the database"""
+        """Add a new photo to the database with EXIF orientation correction."""
         try:
             current_config = load_config()
+
+            # Open the image and correct orientation using EXIF metadata
+            with Image.open(file_path) as img:
+                img = ImageOps.exif_transpose(img)  # Correct orientation
+                img.save(file_path)  # Overwrite the file with the corrected orientation
+                width, height = img.size
+                is_portrait = height > width
+
             file_hash = DatabaseManager.calculate_file_hash(file_path)
             file_size = os.path.getsize(file_path)
-            width, height, is_portrait = DatabaseManager.get_image_dimensions(file_path)
-            
+
             with DatabaseManager.get_db() as conn:
                 c = conn.cursor()
                 c.execute('''
@@ -124,19 +133,20 @@ class DatabaseManager:
                     )
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
                 ''', (filename, original_filename, file_hash, 
-                     datetime.now(), datetime.now(), file_size,
-                     width, height, is_portrait))
+                    datetime.now(), datetime.now(), file_size,
+                    width, height, is_portrait))
                 photo_id = c.lastrowid
-                
-                # If portrait pairing is enabled and it's a portrait photo
+
+                # Handle portrait pairing if enabled
                 if current_config["ENABLE_PORTRAIT_PAIRS"] and is_portrait:
                     DatabaseManager.find_portrait_pair(c, photo_id)
-                
+
                 conn.commit()
                 return photo_id
         except Exception as e:
             print(f"Error adding photo: {e}")
             return None
+
 
     @staticmethod
     def find_portrait_pair(cursor, photo_id):

@@ -1,0 +1,273 @@
+<!-- templates/admin/settings.html -->
+{% extends "base.html" %}
+
+{% block content %}
+<div class="bg-white rounded-lg shadow p-6">
+    <h2 class="text-xl font-bold mb-4">Display Settings</h2>
+    <form action="{{ url_for('admin.update_settings') }}" method="post" class="space-y-6">
+        <!-- Matting Mode -->
+        <div>
+            <label for="matting_mode" class="block text-sm font-medium text-gray-700 mb-2">
+                Photo Frame Background (Matting) Mode
+            </label>
+            <select id="matting_mode" 
+                    name="matting_mode" 
+                    class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 rounded-md">
+                <option value="auto" {% if matting_mode == 'auto' %}selected{% endif %}>
+                    Auto (Dominant Color)
+                </option>
+                <option value="black" {% if matting_mode == 'black' %}selected{% endif %}>
+                    Black
+                </option>
+                <option value="white" {% if matting_mode == 'white' %}selected{% endif %}>
+                    White
+                </option>
+            </select>
+            <p class="mt-2 text-sm text-gray-500">
+                Choose how the photo frame should handle the background around photos that don't fill the screen.
+            </p>
+        </div>
+
+        <!-- Display Time -->
+        <div>
+            <label for="display_time" class="block text-sm font-medium text-gray-700 mb-2">
+                Display Time (seconds)
+            </label>
+            <input type="number" 
+                   id="display_time" 
+                   name="display_time" 
+                   value="{{ display_time }}"
+                   min="5" 
+                   max="300" 
+                   class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 rounded-md"
+                   required>
+            <p class="mt-2 text-sm text-gray-500">
+                How long each photo should be displayed before transitioning (5-300 seconds).
+            </p>
+        </div>
+
+        <!-- Transition Time -->
+        <div>
+            <label for="transition_speed" class="block text-sm font-medium text-gray-700 mb-2">
+                Transition Time (seconds)
+            </label>
+            <input type="number" 
+                   id="transition_speed" 
+                   name="transition_speed" 
+                   value="{{ transition_speed }}"
+                   min="1" 
+                   max="30" 
+                   step="0.5"
+                   class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 rounded-md"
+                   required>
+            <p class="mt-2 text-sm text-gray-500">
+                How long the transition between photos should take (1-30 seconds).
+            </p>
+        </div>
+        <div>
+            <label for="sort_mode" class="block text-sm font-medium text-gray-700 mb-2">
+                Photo Sort Mode
+            </label>
+            <select id="sort_mode" name="sort_mode" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 rounded-md">
+                <option value="sequential" {% if sort_mode == 'sequential' %}selected{% endif %}>Sequential</option>
+                <option value="random" {% if sort_mode == 'random' %}selected{% endif %}>Random</option>
+                <option value="newest" {% if sort_mode == 'newest' %}selected{% endif %}>Newest First</option>
+                <option value="oldest" {% if sort_mode == 'oldest' %}selected{% endif %}>Oldest First</option>
+            </select>
+        </div>
+
+        <!-- Portrait Photo Settings Section -->
+        <div class="pt-6 border-t border-gray-200">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">Portrait Photo Settings</h3>
+            
+            <!-- Enable Portrait Pairs -->
+            <div class="mb-4">
+                <div class="flex items-center">
+                    <input type="checkbox"
+                           id="enable_portrait_pairs"
+                           name="enable_portrait_pairs"
+                           {% if enable_portrait_pairs %}checked{% endif %}
+                           class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
+                    <label for="enable_portrait_pairs" class="ml-2 block text-sm font-medium text-gray-700">
+                        Enable Portrait Photo Pairing
+                    </label>
+                </div>
+                <p class="mt-2 text-sm text-gray-500">
+                    When enabled, portrait photos will be automatically paired and displayed side by side.
+                </p>
+            </div>
+
+            <!-- Portrait Gap -->
+            <div id="portrait_gap_container" class="{% if not enable_portrait_pairs %}opacity-50{% endif %}">
+                <label for="portrait_gap" class="block text-sm font-medium text-gray-700 mb-2">
+                    Gap Between Portrait Photos (pixels)
+                </label>
+                <input type="number" 
+                       id="portrait_gap" 
+                       name="portrait_gap" 
+                       value="{{ portrait_gap }}"
+                       min="0" 
+                       max="100" 
+                       {% if not enable_portrait_pairs %}disabled{% endif %}
+                       class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 rounded-md">
+                <p class="mt-2 text-sm text-gray-500">
+                    Space between paired portrait photos (0-100 pixels).
+                </p>
+            </div>
+        </div>
+
+        <!-- Production/Development Mode Section -->
+        <div class="pt-6 border-t border-gray-200">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">Environment Settings</h3>
+
+            <!-- Toggle Mode -->
+            <div class="mb-4">
+                <div class="flex items-center">
+                    <input type="checkbox"
+                           id="dev_mode"
+                           name="dev_mode"
+                           {% if dev_mode %}checked{% endif %}
+                           class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
+                    <label for="dev_mode" class="ml-2 block text-sm font-medium text-gray-700">
+                        Development Mode
+                    </label>
+                </div>
+                <p class="mt-2 text-sm text-gray-500">
+                    Enable Development Mode to emulate the photo frame locally. In Production Mode, the client runs on a Raspberry Pi using HDMI output.
+                </p>
+            </div>
+
+            <!-- Server Address -->
+            <div class="mb-4">
+                <label for="server_address" class="block text-sm font-medium text-gray-700 mb-2">
+                    Server Address
+                </label>
+                <input type="text" 
+                       id="server_address" 
+                       name="server_address" 
+                       value="{{ server_address }}"
+                       class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 rounded-md"
+                       required>
+                <p class="mt-2 text-sm text-gray-500">
+                    Enter the server's address or hostname (e.g., 192.168.1.10).
+                </p>
+            </div>
+
+            <!-- Server Port -->
+            <div>
+                <label for="server_port" class="block text-sm font-medium text-gray-700 mb-2">
+                    Server Port
+                </label>
+                <input type="number" 
+                       id="server_port" 
+                       name="server_port" 
+                       value="{{ server_port }}"
+                       min="1" 
+                       max="65535" 
+                       class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 rounded-md"
+                       required>
+                <p class="mt-2 text-sm text-gray-500">
+                    Specify the port the server is running on (default: 5000).
+                </p>
+            </div>
+        </div>
+        <div class="pt-6 border-t border-gray-200">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">Client Versions</h3>
+            
+            <div class="bg-white rounded-lg shadow divide-y">
+                <div class="p-4 bg-gray-50">
+                    <h4 class="font-medium">Latest Available Versions</h4>
+                    <p class="text-sm text-gray-600">display.py: {{ latest_versions['display.py'] }}</p>
+                    <p class="text-sm text-gray-600">sync_client.py: {{ latest_versions['sync_client.py'] }}</p>
+                </div>
+                
+                {% for client in clients %}
+                <div class="p-4">
+                    <h4 class="font-medium">Client: {{ client.client_id[:8] }}...</h4>
+                    <div class="mt-2 space-y-1">
+                        <p class="text-sm">
+                            display.py: 
+                            <span class="{% if client.display_version != latest_versions['display.py'] %}text-red-600{% else %}text-green-600{% endif %}">
+                                {{ client.display_version }}
+                            </span>
+                        </p>
+                        <p class="text-sm">
+                            sync_client.py: 
+                            <span class="{% if client.sync_version != latest_versions['sync_client.py'] %}text-red-600{% else %}text-green-600{% endif %}">
+                                {{ client.sync_version }}
+                            </span>
+                        </p>
+                        <p class="text-xs text-gray-500">Last Updated: {{ client.last_update[:16].replace('T', ' ') }}</p>
+                        <div class="mt-4 space-x-2">
+                            <button onclick="controlClient('{{ client.client_id }}', 'restart')"
+                                    class="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600">
+                                Restart
+                            </button>
+                            <button onclick="controlClient('{{ client.client_id }}', 'shutdown')"
+                                    class="bg-red-500 text-white px-3 py-1 rounded text-sm hover:bg-red-600">
+                                Shutdown
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        
+        <div class="flex items-center justify-between pt-4 border-t border-gray-200">
+            <a href="{{ url_for('admin.index') }}" 
+               class="text-blue-500 hover:text-blue-700">
+                Back to Photos
+            </a>
+            <button type="submit" 
+                    class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 
+                           transition-colors duration-200">
+                Save Settings
+            </button>
+        </div>
+    </form>
+</div>
+
+<!-- JavaScript for form interactions -->
+<script>
+document.getElementById('enable_portrait_pairs').addEventListener('change', function() {
+    const gapContainer = document.getElementById('portrait_gap_container');
+    const gapInput = document.getElementById('portrait_gap');
+    
+    if (this.checked) {
+        gapContainer.classList.remove('opacity-50');
+        gapInput.disabled = false;
+    } else {
+        gapContainer.classList.add('opacity-50');
+        gapInput.disabled = true;
+    }
+});
+</script>
+
+<script>
+    function controlClient(clientId, action) {
+        if (!confirm(`Are you sure you want to ${action} this client?`)) {
+            return;
+        }
+        
+        fetch(`/api/client/${clientId}/power`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ action })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                alert(`Error: ${data.error}`);
+            } else {
+                alert(`${action} command sent successfully`);
+            }
+        })
+        .catch(error => {
+            alert(`Error: ${error}`);
+        });
+    }
+    </script>
+{% endblock %}
