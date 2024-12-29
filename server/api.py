@@ -24,19 +24,28 @@ def create_app():
     app.register_blueprint(admin_bp)
 
     # Root route redirects to admin interface
-    @app.route('/')
+    @flask_app.route('/')
     def index():
         photos = DatabaseManager.get_all_photos_with_pairs()
         return render_template('admin/index.html', photos=photos)
 
     return app
 
-app = create_app()
+# Create the Flask application
+flask_app = create_app()
 
+# For production with uvicorn, we need to wrap the Flask app
+try:
+    from asgiref.wsgi import WsgiToAsgi
+    app = WsgiToAsgi(flask_app)
+except ImportError:
+    app = flask_app
+
+# Register routes on the Flask app instance
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-@app.route('/api/photos', methods=['POST'])
+@flask_app.route('/api/photos', methods=['POST'])
 def upload_photo():
     if 'photo' not in request.files:
         return jsonify({'error': 'No photo part'}), 400
@@ -49,7 +58,7 @@ def upload_photo():
         original_filename = secure_filename(file.filename)
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = f"{timestamp}_{original_filename}"
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file_path = os.path.join(flask_app.config['UPLOAD_FOLDER'], filename)
         
         file.save(file_path)
         photo_id = DatabaseManager.add_photo(filename, original_filename, file_path)
@@ -62,7 +71,7 @@ def upload_photo():
     
     return jsonify({'error': 'Invalid file type'}), 400
 
-@app.route('/api/photos', methods=['GET'])
+@flask_app.route('/api/photos', methods=['GET'])
 def list_photos():
     photos = DatabaseManager.get_all_photos()
     return jsonify([{
@@ -79,7 +88,7 @@ def list_photos():
         'paired_photo_id': p['paired_photo_id']
     } for p in photos])
 
-@app.route('/api/photos/<int:photo_id>', methods=['GET'])
+@flask_app.route('/api/photos/<int:photo_id>', methods=['GET'])
 def get_photo(photo_id):
     photo = DatabaseManager.get_photo_by_id(photo_id)
     if photo is None:
@@ -90,13 +99,13 @@ def get_photo(photo_id):
         mimetype='image/jpeg'
     )
 
-@app.route('/api/photos/<int:photo_id>', methods=['DELETE'])
+@flask_app.route('/api/photos/<int:photo_id>', methods=['DELETE'])
 def delete_photo(photo_id):
     if DatabaseManager.soft_delete_photo(photo_id):
         return jsonify({'message': 'Photo deleted successfully'})
     return jsonify({'error': 'Photo not found'}), 404
 
-@app.route('/api/sync', methods=['POST'])
+@flask_app.route('/api/sync', methods=['POST'])
 def sync_client():
     client_id = request.json.get('client_id')
     client_hashes = request.json.get('file_hashes', [])
@@ -149,7 +158,7 @@ def sync_client():
         'display_order': display_order
     })
 
-@app.route('/api/dev/status', methods=['GET'])
+@flask_app.route('/api/dev/status', methods=['GET'])
 def dev_status():
     """Development endpoint to check server status and configuration"""
     current_config = load_config()
@@ -169,7 +178,7 @@ def dev_status():
         'server_url': f"http://{current_config['HOST']}:{current_config['PORT']}"
     })
 
-@app.route('/api/config', methods=['GET'])
+@flask_app.route('/api/config', methods=['GET'])
 def get_config():
     """Get display configuration"""
     current_config = load_config()
@@ -182,13 +191,13 @@ def get_config():
         'sort_mode': current_config["SORT_MODE"]  # Add this line
     })
 
-@app.route('/api/client/version')
+@flask_app.route('/api/client/version')
 def get_client_version():
     """Get latest client code versions"""
     current_config = load_config()
     return jsonify(current_config["CLIENT_VERSION"])
 
-@app.route('/api/client/code/<filename>')
+@flask_app.route('/api/client/code/<filename>')
 def get_client_code(filename):
     """Serve client code files"""
     if filename not in ['display.py', 'sync_client.py']:
@@ -200,7 +209,7 @@ def get_client_code(filename):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
     
-@app.route('/api/client/<client_id>/power', methods=['POST'])
+@flask_app.route('/api/client/<client_id>/power', methods=['POST'])
 def control_client(client_id):
     action = request.json.get('action')
     if action not in ['shutdown', 'restart']:
@@ -237,5 +246,13 @@ if __name__ == '__main__':
         print(f"  curl http://{current_config['HOST']}:{current_config['PORT']}/api/dev/status")
         print("\nDevelopment endpoints enabled")
         print("=================================\n")
-    
-    app.run(debug=current_config["DEV_MODE"], host=current_config["HOST"], port=current_config["PORT"])
+        
+        # In dev mode, use Flask's built-in server with flask_app
+        flask_app.run(debug=current_config["DEV_MODE"], 
+                     host=current_config["HOST"], 
+                     port=current_config["PORT"])
+    else:
+        # In production, uvicorn will use the 'app' instance directly
+        print("\n=== Running in PRODUCTION mode ===")
+        print("The application will be served by uvicorn")
+        print("=================================\n")
