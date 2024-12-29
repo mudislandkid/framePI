@@ -14,7 +14,6 @@ print_warning() { echo -e "${YELLOW}[*]${NC} $1"; }
 print_info() { echo -e "${BLUE}[i]${NC} $1"; }
 
 # Function for comprehensive cleanup of previous installations
-# Function for comprehensive cleanup of previous installations
 cleanup_previous_installation() {
     print_status "Performing comprehensive cleanup..."
     
@@ -85,7 +84,7 @@ cleanup_previous_installation() {
     return 0
 }
 
-# Function to check if ports are available
+# Function to check ports
 check_ports() {
     local ports=("80" "443" "8000")
     for port in "${ports[@]}"; do
@@ -157,21 +156,71 @@ setup_ssl() {
     local fqdn=$1
     print_status "Setting up SSL for $fqdn..."
 
-    # Stop Nginx before SSL setup
-    systemctl stop nginx
+    # Stop all web services first
+    systemctl stop nginx framePI || true
+    sleep 2
     
-    # Clean up any existing certificates
-    rm -rf /etc/letsencrypt/live/$fqdn
-    rm -rf /etc/letsencrypt/archive/$fqdn
-    rm -f /etc/letsencrypt/renewal/$fqdn.conf
+    # Double check no processes are running
+    pkill -f nginx || true
+    sleep 1
 
-    # Install certbot
-    print_status "Installing certbot..."
-    apt-get update
-    apt-get install -y certbot python3-certbot-nginx
+    # Install certbot if needed
+    if ! command -v certbot &> /dev/null; then
+        print_status "Installing certbot..."
+        apt-get update
+        apt-get install -y certbot python3-certbot-nginx
+    fi
 
-    # Obtain SSL certificate
-    if certbot --nginx -d "$fqdn" --non-interactive --agree-tos --email "admin@$fqdn" --redirect; then
+    # Obtain certificate without using nginx plugin
+    if certbot certonly --standalone -d "$fqdn" --non-interactive --agree-tos --email "admin@$fqdn"; then
+        # Manually configure nginx for SSL
+        cat > /etc/nginx/sites-available/framePI << EOL
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${fqdn};
+    return 301 https://\$host\$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name ${fqdn};
+
+    ssl_certificate /etc/letsencrypt/live/${fqdn}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${fqdn}/privkey.pem;
+    
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers on;
+    ssl_ciphers ECDH+AESGCM:ECDH+AES256:ECDH+AES128:DH+3DES:!ADH:!AECDH:!MD5;
+
+    client_max_body_size 50M;
+    
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+
+    location /static {
+        alias $INSTALL_DIR/server/static;
+        expires 30d;
+        add_header Cache-Control "public, no-transform";
+    }
+
+    location /uploads {
+        alias $INSTALL_DIR/server/uploads;
+        expires 7d;
+        add_header Cache-Control "public, no-transform";
+    }
+}
+EOL
+
+        # Enable the site
+        ln -sf /etc/nginx/sites-available/framePI /etc/nginx/sites-enabled/
+
         print_status "SSL setup complete for $fqdn"
         return 0
     else
@@ -180,7 +229,7 @@ setup_ssl() {
     fi
 }
 
-# Function to update config.py for mode and host
+# Function to update config.py
 update_config() {
     local mode=$1
     local host=$2
@@ -201,42 +250,58 @@ EOF
     print_status "Config updated: DEV_MODE=$mode, HOST=$host"
     return 0
 }
-# Function to handle FQDN and SSL setup
-setup_fqdn_ssl() {
-    read -p "Do you want to set up a Fully Qualified Domain Name (FQDN)? (y/n): " setup_fqdn
-    if [[ "$setup_fqdn" == "y" || "$setup_fqdn" == "Y" ]]; then
-        read -p "Enter your FQDN (e.g., example.com): " fqdn
-        
-        # Update Python configuration with FQDN
-        if ! $INSTALL_DIR/venv/bin/python3 -c "import sys; sys.path.append('$INSTALL_DIR/server'); from config import update_fqdn; update_fqdn('$fqdn')"; then
-            print_error "Failed to configure FQDN in config.py!"
-            exit 1
-        fi
 
-        echo "Configuration updated with FQDN: $fqdn"
-
-        # Configure Nginx first
-        if ! configure_nginx "$fqdn"; then
-            print_error "Failed to configure Nginx. Exiting."
-            exit 1
-        fi
-
-        # Ask about SSL setup
-        read -p "Do you want to set up SSL with Let's Encrypt for $fqdn? (y/n): " setup_ssl_prompt
-        if [[ "$setup_ssl_prompt" == "y" || "$setup_ssl_prompt" == "Y" ]]; then
-            if ! setup_ssl "$fqdn"; then
-                print_warning "SSL setup failed. You can try setting it up manually later using:"
-                print_info "sudo certbot --nginx -d $fqdn"
-            fi
-        else
-            print_warning "Skipping SSL setup."
-        fi
-    else
-        print_warning "Skipping FQDN and SSL setup."
-        configure_nginx "localhost"
+# Function to test Python virtual environment
+test_virtualenv() {
+    print_status "Testing Python virtual environment..."
+    source $INSTALL_DIR/venv/bin/activate
+    if ! python3 -m venv --help &> /dev/null; then
+        print_error "Virtual environment is not set up correctly."
+        print_info "Try running: python3 -m venv $INSTALL_DIR/venv and activate it manually."
+        return 1
     fi
+    print_status "Virtual environment is set up correctly."
+    return 0
 }
 
+# Function to start services in the correct order
+start_services() {
+    print_status "Starting services in correct order..."
+    
+    # Stop everything first
+    systemctl stop nginx framePI || true
+    sleep 2
+    
+    # Kill any remaining processes
+    pkill -f nginx || true
+    pkill -f "uvicorn.*framePI" || true
+    sleep 1
+    
+    # Start framePI first
+    print_info "Starting framePI service..."
+    systemctl start framePI
+    sleep 2
+    
+    if ! systemctl is-active --quiet framePI; then
+        print_error "framePI service failed to start"
+        journalctl -u framePI --no-pager -n 50
+        return 1
+    fi
+    
+    # Then start nginx
+    print_info "Starting nginx service..."
+    systemctl start nginx
+    sleep 2
+    
+    if ! systemctl is-active --quiet nginx; then
+        print_error "Nginx failed to start"
+        journalctl -u nginx --no-pager -n 50
+        return 1
+    fi
+    
+    print_status "All services started successfully"
+    return 0
+}
 # Main installation logic
 main() {
     # Check if running as root
@@ -249,7 +314,10 @@ main() {
     INSTALL_DIR="/opt/framePI"
 
     # Perform cleanup
-    cleanup_previous_installation
+    if ! cleanup_previous_installation; then
+        print_error "Cleanup failed. Please resolve the issues and try again."
+        exit 1
+    fi
 
     # Install required packages
     print_status "Installing required packages..."
@@ -314,8 +382,45 @@ EOL
         exit 1
     }
 
-    # Set up FQDN and SSL
-    setup_fqdn_ssl
+    # Test virtual environment
+    if ! test_virtualenv; then
+        print_error "Virtual environment setup failed. Exiting."
+        exit 1
+    fi
+
+# Set up FQDN and SSL
+    read -p "Do you want to set up a Fully Qualified Domain Name (FQDN)? (y/n): " setup_fqdn
+    if [[ "$setup_fqdn" == "y" || "$setup_fqdn" == "Y" ]]; then
+        read -p "Enter your FQDN (e.g., example.com): " fqdn
+        
+        # Update Python configuration with FQDN
+        if ! $INSTALL_DIR/venv/bin/python3 -c "import sys; sys.path.append('$INSTALL_DIR/server'); from config import update_fqdn; update_fqdn('$fqdn')"; then
+            print_error "Failed to configure FQDN in config.py!"
+            exit 1
+        fi
+
+        echo "Configuration updated with FQDN: $fqdn"
+
+        # Configure Nginx first
+        if ! configure_nginx "$fqdn"; then
+            print_error "Failed to configure Nginx. Exiting."
+            exit 1
+        fi
+
+        # Ask about SSL setup
+        read -p "Do you want to set up SSL with Let's Encrypt for $fqdn? (y/n): " setup_ssl_prompt
+        if [[ "$setup_ssl_prompt" == "y" || "$setup_ssl_prompt" == "Y" ]]; then
+            if ! setup_ssl "$fqdn"; then
+                print_warning "SSL setup failed. You can try setting it up manually later using:"
+                print_info "sudo certbot --nginx -d $fqdn"
+            fi
+        else
+            print_warning "Skipping SSL setup."
+        fi
+    else
+        print_warning "Skipping FQDN and SSL setup."
+        configure_nginx "localhost"
+    fi
 
     # Create log files
     print_status "Setting up log files..."
@@ -343,40 +448,16 @@ StandardError=append:/var/log/framePI.error.log
 WantedBy=multi-user.target
 EOL
 
-    # Start services
-    print_status "Starting services..."
+    # Enable services
     systemctl daemon-reload
-    
-    # Stop services if running
-    systemctl stop framePI nginx || true
-    
-    # Check ports before starting services
-    if ! check_ports; then
-        print_error "Required ports are in use. Please free them before continuing."
-        exit 1
-    fi
-    
-    # Start and enable services in correct order
-    systemctl enable nginx
-    systemctl start nginx
     systemctl enable framePI
-    systemctl start framePI
+    systemctl enable nginx
 
-    # Verify services are running
-    sleep 2
-    if ! systemctl is-active --quiet nginx; then
-        print_error "Nginx failed to start. Check logs with: journalctl -u nginx"
-        journalctl -u nginx --no-pager -n 50
+    # Start services in correct order
+    if ! start_services; then
+        print_error "Failed to start services. Please check the logs and try again."
         exit 1
     fi
-
-    if ! systemctl is-active --quiet framePI; then
-        print_error "framePI service failed to start. Check logs with: journalctl -u framePI"
-        journalctl -u framePI --no-pager -n 50
-        exit 1
-    fi
-
-    print_status "All services started successfully"
 
     # Print installation summary
     print_status "Installation Summary:"
@@ -410,6 +491,20 @@ EOL
 
     print_status "Installation complete!"
 }
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --mode)
+            MODE="$2"
+            shift 2
+            ;;
+        *)
+            print_error "Unknown argument: $1"
+            exit 1
+            ;;
+    esac
+done
 
 # Run main installation
 main "$@"
