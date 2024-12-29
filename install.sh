@@ -277,6 +277,26 @@ test_virtualenv() {
     return 0
 }
 
+# Function to test Flask app
+test_flask_app() {
+    print_status "Testing Flask application..."
+    
+    if ! $INSTALL_DIR/venv/bin/python3 -c "
+import sys
+sys.path.append('$INSTALL_DIR/server')
+try:
+    from api import app
+    print('Flask app imported successfully')
+except Exception as e:
+    print(f'Error importing Flask app: {e}')
+    sys.exit(1)
+"; then
+        print_error "Failed to import Flask application"
+        return 1
+    fi
+    return 0
+}
+
 # Function to start services in the correct order
 start_services() {
     print_status "Starting services in correct order..."
@@ -454,16 +474,22 @@ Group=www-data
 WorkingDirectory=/opt/framePI/server
 Environment="PATH=/opt/framePI/venv/bin"
 ExecStartPre=/bin/sleep 1
-ExecStart=/opt/framePI/venv/bin/uvicorn api:app --host 127.0.0.1 --port 8000 --no-access-log
+ExecStart=/opt/framePI/venv/bin/python3 -m uvicorn api:app --host 127.0.0.1 --port 8000 --log-level debug
 Restart=always
 RestartSec=5
 StartLimitBurst=0
-StandardOutput=append:/var/log/framePI.log
-StandardError=append:/var/log/framePI.error.log
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
 EOL
+
+        # Add this before start_services
+    if ! test_flask_app; then
+        print_error "Flask application test failed. Please check your application code."
+        exit 1
+    fi
 
     # Enable services
     systemctl daemon-reload
