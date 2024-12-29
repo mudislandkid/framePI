@@ -113,14 +113,25 @@ def create_app():
 
     @app.route('/api/photos/<int:photo_id>', methods=['GET'])
     def get_photo(photo_id):
-        photo = DatabaseManager.get_photo_by_id(photo_id)
-        if photo is None:
-            return jsonify({'error': 'Photo not found'}), 404
+        try:
+            logging.info(f"Fetching photo with ID: {photo_id}")
+            photo = DatabaseManager.get_photo_by_id(photo_id)
+            if photo is None:
+                logging.error(f"Photo with ID {photo_id} not found in the database.")
+                return jsonify({'error': 'Photo not found'}), 404
 
-        return send_file(
-            os.path.join(app.config['UPLOAD_FOLDER'], photo['filename']),
-            mimetype='image/jpeg'
-        )
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], photo['filename'])
+            if not os.path.exists(file_path):
+                logging.error(f"File not found at path: {file_path}")
+                return jsonify({'error': 'File not found'}), 404
+
+            logging.info(f"Serving file from path: {file_path}")
+            return send_file(file_path, mimetype='image/jpeg')
+
+        except Exception as e:
+            logging.exception(f"Error while retrieving photo with ID {photo_id}: {e}")
+            return jsonify({'error': 'Internal server error'}), 500
+
 
     @app.route('/api/photos/<int:photo_id>', methods=['DELETE'])
     def delete_photo(photo_id):
