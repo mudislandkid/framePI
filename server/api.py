@@ -222,7 +222,12 @@ def create_app():
     return app
 
 def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+    """Check if filename has an allowed extension.
+    The function is case-insensitive and properly handles files without extensions."""
+    if '.' not in filename:
+        return False
+    ext = filename.rsplit('.', 1)[1].lower()
+    return ext in (ext.lower() for ext in ALLOWED_EXTENSIONS)
 
 # Create the Flask application
 flask_app = create_app()

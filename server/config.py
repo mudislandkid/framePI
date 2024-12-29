@@ -12,7 +12,15 @@ DEFAULT_CONFIG = {
     "DATABASE": os.path.join(BASE_DIR, 'photo_frame.db'),
     "HOST": 'localhost',
     "PORT": 5000,
-    "ALLOWED_EXTENSIONS": ["png", "jpg", "jpeg"],
+    "ALLOWED_EXTENSIONS": [
+        "jpg", "jpeg", "JPG", "JPEG",
+        "png", "PNG",
+        "gif", "GIF",
+        "bmp", "BMP",
+        "webp", "WEBP",
+        "tiff", "TIFF", "tif", "TIF",
+        "heic", "HEIC"
+    ],
     "MAX_CONTENT_LENGTH": 50 * 1024 * 1024,  # 50MB max file size
     "SECRET_KEY": 'dev',
     # Display settings
