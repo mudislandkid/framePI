@@ -38,7 +38,7 @@ DEFAULT_CONFIG = {
 }
 
 def ensure_directories():
-    """Ensure all required directories exist"""
+    """Ensure all required directories exist with proper permissions"""
     dirs = [
         os.path.dirname(CONFIG_FILE),
         os.path.join(BASE_DIR, 'uploads'),
@@ -47,7 +47,14 @@ def ensure_directories():
     ]
     for d in dirs:
         if not os.path.exists(d):
-            os.makedirs(d, exist_ok=True)
+            os.makedirs(d, mode=0o775, exist_ok=True)
+        os.chmod(d, 0o775)  # Ensure directory is writable
+        # Assuming the script is run as root during installation
+        import pwd
+        import grp
+        uid = pwd.getpwnam('www-data').pw_uid
+        gid = grp.getgrnam('www-data').gr_gid
+        os.chown(d, uid, gid)
 
 def load_config():
     """Load configuration from JSON file with dynamic path handling"""
