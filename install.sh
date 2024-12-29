@@ -278,6 +278,7 @@ test_virtualenv() {
 }
 
 # Function to test Flask app
+# Function to test Flask app
 test_flask_app() {
     print_status "Testing Flask application..."
     
@@ -285,7 +286,11 @@ test_flask_app() {
 import sys
 sys.path.append('$INSTALL_DIR/server')
 try:
-    from api import app
+    import api
+    try:
+        app = api.app  # Try to get the ASGI wrapped app first
+    except AttributeError:
+        app = api.flask_app  # Fall back to Flask app
     print('Flask app imported successfully')
 except Exception as e:
     print(f'Error importing Flask app: {e}')
