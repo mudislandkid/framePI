@@ -14,7 +14,7 @@ def create_app():
 
     # Configure logging
     log_handler = RotatingFileHandler(
-        "requests.log", maxBytes=5 * 1024 * 1024, backupCount=5
+        "/var/log/framePI/requests.log", maxBytes=5 * 1024 * 1024, backupCount=5
     )  # 5MB per file, 5 backups
 
     # Set up detailed logging
