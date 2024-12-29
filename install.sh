@@ -524,6 +524,29 @@ EOL
         exit 1
     fi
 
+    # Now set permissions after all files are in place
+    print_status "Setting correct permissions..."
+    chown -R www-data:www-data "$INSTALL_DIR" || {
+        print_error "Failed to set ownership for $INSTALL_DIR. Exiting."
+        exit 1
+    }
+
+    # Set base permissions
+    chmod -R 755 "$INSTALL_DIR" || {
+        print_error "Failed to set permissions for $INSTALL_DIR. Exiting."
+        exit 1
+    }
+
+    # Set more permissive permissions for specific directories
+    chmod 775 "$INSTALL_DIR/server/uploads" || {
+        print_error "Failed to set permissions for uploads directory. Exiting."
+        exit 1
+    }
+    chmod 775 "$INSTALL_DIR/server/logs" || {
+        print_error "Failed to set permissions for logs directory. Exiting."
+        exit 1
+    }
+
     # Print installation summary
     print_status "Installation Summary:"
     echo "--------------------"
