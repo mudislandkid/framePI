@@ -48,12 +48,18 @@ def create_app():
     def log_response_details(response):
         status_code = response.status_code
         headers = dict(response.headers)
-        body = response.get_data(as_text=True) or "No Body"
 
-        logging.debug(
-            f"Response sent:\nStatus Code: {status_code}\nHeaders: {headers}\nBody: {body}"
+        # Check if the response is in passthrough mode
+        if not response.direct_passthrough:
+            body = response.get_data(as_text=True) or "No Body"
+        else:
+            body = "Response in direct passthrough mode (e.g., file streaming)."
+
+        logging.info(
+            f"Response:\nStatus Code: {status_code}\nHeaders: {headers}\nBody: {body}\n"
         )
         return response
+
     
     @app.errorhandler(Exception)
     def handle_exception(e):
