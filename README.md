@@ -41,11 +41,12 @@ A digital photo frame system with a centralized web server for managing photos a
 2. Run the install script:
    ```bash
    cd framePI
+   chmod +x ./install.sh
    sudo ./install.sh --mode <dev|prod>
    ```
 
    Replace `<dev|prod>` with:
-   - `dev` for development mode: runs Flask server with debug enabled and sets host to `127.0.0.1`.
+   - `dev` for development mode: runs Flask server with debug enabled and sets host to `127.0.0.1`. This is designed for local testing without a RPI client. It will launch a python window to emulate the RPI display.
    - `prod` for production mode: sets up Uvicorn with systemd and configures host as the external IP or FQDN.
 
    The install script will:
@@ -97,20 +98,35 @@ A digital photo frame system with a centralized web server for managing photos a
 The server configuration is stored in `config.json`:
 
 ```json
-{
-    "DEV_MODE": false,
-    "UPLOAD_FOLDER": "/opt/photoframe/server_photos",
-    "DATABASE": "/opt/photoframe/photo_frame.db",
-    "HOST": "0.0.0.0",
-    "PORT": 80,
-    "ALLOWED_EXTENSIONS": ["png", "jpg", "jpeg"],
-    "MAX_CONTENT_LENGTH": 52428800,
-    "MATTING_MODE": "white",
-    "DISPLAY_TIME": 30,
-    "TRANSITION_SPEED": 2,
-    "ENABLE_PORTRAIT_PAIRS": true,
+DEFAULT_CONFIG = {
+    "DEV_MODE": False,
+    "UPLOAD_FOLDER": os.path.join(BASE_DIR, 'uploads'),
+    "DATABASE": os.path.join(BASE_DIR, 'photo_frame.db'),
+    "HOST": 'localhost',
+    "PORT": 5000,
+    "ALLOWED_EXTENSIONS": [
+        "jpg", "jpeg", "JPG", "JPEG",
+        "png", "PNG",
+        "gif", "GIF",
+        "bmp", "BMP",
+        "webp", "WEBP",
+        "tiff", "TIFF", "tif", "TIF",
+        "heic", "HEIC"
+    ],
+    "MAX_CONTENT_LENGTH": 50 * 1024 * 1024,  # 50MB max file size
+    "SECRET_KEY": 'dev',
+    # Display settings
+    "MATTING_MODE": 'white',
+    "DISPLAY_TIME": 15,
+    "TRANSITION_SPEED": 10,
+    "ENABLE_PORTRAIT_PAIRS": True,
     "PORTRAIT_GAP": 20,
-    "SORT_MODE": "sequential"
+    "SORT_MODE": "random",
+    # Client versioning
+    "CLIENT_VERSION": {
+        "display.py": "1.0.5",
+        "sync_client.py": "1.0.5"
+    }
 }
 ```
 
