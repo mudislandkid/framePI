@@ -32,10 +32,10 @@ def create_app():
         client_ip = request.remote_addr
 
         logging.info(
-            f"Incoming request from {client_ip}:
-"
+            f"Incoming request from {client_ip}:\n"
             f"Method: {method}\nURL: {url}\nHeaders: {headers}\nBody: {body}\n"
         )
+
 
     # Middleware for logging responses
     @app.after_request
