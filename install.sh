@@ -86,15 +86,28 @@ cleanup_previous_installation() {
 
 # Function to check ports
 check_ports() {
-    local ports=("80" "443" "8000")
-    for port in "${ports[@]}"; do
-        if lsof -i ":$port" >/dev/null 2>&1; then
-            print_error "Port $port is already in use"
-            print_info "Finding process using port $port..."
-            lsof -i ":$port"
+    print_status "Checking port availability..."
+    
+    # First kill any existing uvicorn processes
+    pkill -f "uvicorn.*api:app" || true
+    sleep 1
+    
+    # Check specific port and interface combinations
+    local ports=(
+        "127.0.0.1:8000"  # uvicorn
+        "*:80"            # nginx http
+        "*:443"           # nginx https
+    )
+    
+    for bind in "${ports[@]}"; do
+        if lsof -i "@$bind" >/dev/null 2>&1; then
+            print_error "Port $bind is already in use"
+            print_info "Finding process using $bind..."
+            lsof -i "@$bind"
             return 1
         fi
     done
+    print_status "All ports are available"
     return 0
 }
 
@@ -433,14 +446,18 @@ EOL
 [Unit]
 Description=Photo Frame Server
 After=network.target
+StartLimitIntervalSec=0
 
 [Service]
 User=www-data
 Group=www-data
-WorkingDirectory=$INSTALL_DIR/server
-Environment="PATH=$INSTALL_DIR/venv/bin"
-ExecStart=$INSTALL_DIR/venv/bin/uvicorn api:app --host 127.0.0.1 --port 8000
+WorkingDirectory=/opt/framePI/server
+Environment="PATH=/opt/framePI/venv/bin"
+ExecStartPre=/bin/sleep 1
+ExecStart=/opt/framePI/venv/bin/uvicorn api:app --host 127.0.0.1 --port 8000 --no-access-log
 Restart=always
+RestartSec=5
+StartLimitBurst=0
 StandardOutput=append:/var/log/framePI.log
 StandardError=append:/var/log/framePI.error.log
 
