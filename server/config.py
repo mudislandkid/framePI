@@ -32,8 +32,8 @@ DEFAULT_CONFIG = {
     "SORT_MODE": "random",
     # Client versioning
     "CLIENT_VERSION": {
-        "display.py": "1.0.5",
-        "sync_client.py": "1.0.5"
+        "display.py": "1.0.6",
+        "sync_client.py": "1.0.6"
     }
 }
 
