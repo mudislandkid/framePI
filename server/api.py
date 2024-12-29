@@ -6,10 +6,49 @@ from config import load_config, BASE_DIR, ALLOWED_EXTENSIONS
 from database import DatabaseManager
 from admin import admin_bp
 import requests
+import logging
+from logging.handlers import RotatingFileHandler
 
 def create_app():
     app = Flask(__name__)
-    
+
+    # Configure logging
+    log_handler = RotatingFileHandler(
+        "requests.log", maxBytes=5 * 1024 * 1024, backupCount=5
+    )  # 5MB per file, 5 backups
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+        handlers=[log_handler]
+    )
+
+    # Middleware for logging requests
+    @app.before_request
+    def log_request_details():
+        method = request.method
+        url = request.url
+        headers = dict(request.headers)
+        body = request.get_data(as_text=True) or "No Body"
+        client_ip = request.remote_addr
+
+        logging.info(
+            f"Incoming request from {client_ip}:
+"
+            f"Method: {method}\nURL: {url}\nHeaders: {headers}\nBody: {body}\n"
+        )
+
+    # Middleware for logging responses
+    @app.after_request
+    def log_response_details(response):
+        status_code = response.status_code
+        headers = dict(response.headers)
+        body = response.get_data(as_text=True) or "No Body"
+
+        logging.info(
+            f"Response:\nStatus Code: {status_code}\nHeaders: {headers}\nBody: {body}\n"
+        )
+        return response
+
     # Load configuration dynamically
     current_config = load_config()
     app.config['UPLOAD_FOLDER'] = current_config["UPLOAD_FOLDER"]
@@ -28,31 +67,31 @@ def create_app():
     def index():
         photos = DatabaseManager.get_all_photos_with_pairs()
         return render_template('admin/index.html', photos=photos)
-    
+
     @app.route('/api/photos', methods=['POST'])
     def upload_photo():
         if 'photo' not in request.files:
             return jsonify({'error': 'No photo part'}), 400
-        
+
         file = request.files['photo']
         if file.filename == '':
             return jsonify({'error': 'No selected file'}), 400
-        
+
         if file and allowed_file(file.filename):
             original_filename = secure_filename(file.filename)
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             filename = f"{timestamp}_{original_filename}"
             file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            
+
             file.save(file_path)
             photo_id = DatabaseManager.add_photo(filename, original_filename, file_path)
-            
+
             return jsonify({
                 'message': 'Photo uploaded successfully',
                 'filename': filename,
                 'id': photo_id
             }), 201
-        
+
         return jsonify({'error': 'Invalid file type'}), 400
 
     @app.route('/api/photos', methods=['GET'])
@@ -77,7 +116,7 @@ def create_app():
         photo = DatabaseManager.get_photo_by_id(photo_id)
         if photo is None:
             return jsonify({'error': 'Photo not found'}), 404
-        
+
         return send_file(
             os.path.join(app.config['UPLOAD_FOLDER'], photo['filename']),
             mimetype='image/jpeg'
@@ -94,24 +133,22 @@ def create_app():
         client_id = request.json.get('client_id')
         client_hashes = request.json.get('file_hashes', [])
         client_versions = request.json.get('client_versions', {})
-        
+
         if not client_id:
             return jsonify({'error': 'Client ID required'}), 400
-        
+
         current_config = load_config()
         sort_mode = current_config.get('sort_mode', 'sequential')
-        
-        # Get sorted photos based on mode
+
         if sort_mode == 'random':
             photos = DatabaseManager.get_all_photos(order_by='RANDOM()')
         elif sort_mode == 'newest':
             photos = DatabaseManager.get_all_photos(order_by='upload_date DESC')
         elif sort_mode == 'oldest':
             photos = DatabaseManager.get_all_photos(order_by='upload_date ASC')
-        else:  # sequential
+        else:
             photos = DatabaseManager.get_all_photos(order_by='filename')
 
-        # Create the photos_to_download list with display order included
         photos_to_download = []
         for idx, photo in enumerate(photos):
             if photo['file_hash'] not in client_hashes:
@@ -126,16 +163,13 @@ def create_app():
                     'upload_date': photo['upload_date']
                 }
                 photos_to_download.append(photo_info)
-        
-        # Calculate photos to delete
+
         photos_to_delete = [h for h in client_hashes if h not in {p['file_hash'] for p in photos}]
-        
-        # Update sync token with version information
+
         DatabaseManager.update_sync_token(client_id, client_versions)
-        
-        # Create the display order mapping
+
         display_order = {p['file_hash']: idx for idx, p in enumerate(photos)}
-        
+
         return jsonify({
             'to_download': photos_to_download,
             'to_delete': photos_to_delete,
@@ -144,13 +178,12 @@ def create_app():
 
     @app.route('/api/dev/status', methods=['GET'])
     def dev_status():
-        """Development endpoint to check server status and configuration"""
         current_config = load_config()
         if not current_config["DEV_MODE"]:
             return jsonify({'error': 'Development endpoints disabled'}), 403
-        
+
         stats = DatabaseManager.get_photo_stats()
-        
+
         return jsonify({
             'status': 'running',
             'dev_mode': current_config["DEV_MODE"],
@@ -164,7 +197,6 @@ def create_app():
 
     @app.route('/api/config', methods=['GET'])
     def get_config():
-        """Get display configuration"""
         current_config = load_config()
         return jsonify({
             'matting_mode': current_config["MATTING_MODE"],
@@ -177,37 +209,33 @@ def create_app():
 
     @app.route('/api/client/version')
     def get_client_version():
-        """Get latest client code versions"""
         current_config = load_config()
         return jsonify(current_config["CLIENT_VERSION"])
 
     @app.route('/api/client/code/<filename>')
     def get_client_code(filename):
-        """Serve client code files"""
         if filename not in ['display.py', 'sync_client.py']:
             return jsonify({'error': 'Invalid file'}), 404
-            
+
         try:
             with open(os.path.join(BASE_DIR, 'client', filename), 'r') as f:
                 return f.read(), 200, {'Content-Type': 'text/plain'}
         except Exception as e:
             return jsonify({'error': str(e)}), 500
-        
+
     @app.route('/api/client/<client_id>/power', methods=['POST'])
     def control_client(client_id):
         action = request.json.get('action')
         if action not in ['shutdown', 'restart']:
             return jsonify({'error': 'Invalid action'}), 400
-        
-        # Find client IP from database
+
         with DatabaseManager.get_db() as conn:
             c = conn.cursor()
             c.execute('SELECT last_ip FROM client_versions WHERE client_id = ?', (client_id,))
             result = c.fetchone()
             if not result:
                 return jsonify({'error': 'Client not found'}), 404
-            
-            # Send command to client
+
             try:
                 response = requests.post(
                     f'http://{result["last_ip"]}:5000/power',
@@ -222,8 +250,6 @@ def create_app():
     return app
 
 def allowed_file(filename):
-    """Check if filename has an allowed extension.
-    The function is case-insensitive and properly handles files without extensions."""
     if '.' not in filename:
         return False
     ext = filename.rsplit('.', 1)[1].lower()
