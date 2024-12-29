@@ -424,6 +424,7 @@ werkzeug
 gunicorn
 uvicorn
 python-dotenv
+asgiref
 EOL
 
     $INSTALL_DIR/venv/bin/pip install -r $INSTALL_DIR/requirements.txt || {
