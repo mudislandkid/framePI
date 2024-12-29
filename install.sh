@@ -14,6 +14,7 @@ print_warning() { echo -e "${YELLOW}[*]${NC} $1"; }
 print_info() { echo -e "${BLUE}[i]${NC} $1"; }
 
 # Function for comprehensive cleanup of previous installations
+# Function for comprehensive cleanup of previous installations
 cleanup_previous_installation() {
     print_status "Performing comprehensive cleanup..."
     
@@ -22,10 +23,20 @@ cleanup_previous_installation() {
     systemctl stop framePI nginx || true
     systemctl disable framePI nginx || true
     
-    # Kill any running processes
+    # Kill any running processes more aggressively
     print_info "Killing any running processes..."
+    pkill -f nginx || true
     killall nginx || true
     pkill -f "uvicorn.*framePI" || true
+    
+    # Small delay to ensure processes are terminated
+    sleep 2
+    
+    # Force kill any remaining nginx processes
+    if pgrep nginx > /dev/null; then
+        print_warning "Forcing termination of remaining nginx processes..."
+        pkill -9 -f nginx || true
+    fi
     
     # Remove service files
     print_info "Removing service files..."
@@ -33,10 +44,9 @@ cleanup_previous_installation() {
     
     # Clean up Nginx configurations
     print_info "Cleaning up Nginx configurations..."
-    rm -f /etc/nginx/sites-enabled/framePI
+    rm -f /etc/nginx/sites-enabled/*
     rm -f /etc/nginx/sites-available/framePI
     rm -f /var/run/nginx.pid
-    rm -f /etc/nginx/sites-enabled/default
     
     # Remove installation directory
     if [ -d "$INSTALL_DIR" ]; then
@@ -49,10 +59,30 @@ cleanup_previous_installation() {
     rm -f /var/log/framePI.log
     rm -f /var/log/framePI.error.log
     
+    # Clean up port usage
+    print_info "Checking for processes using required ports..."
+    for port in 80 443 8000; do
+        if lsof -i ":$port" > /dev/null 2>&1; then
+            print_warning "Found process using port $port. Attempting to terminate..."
+            fuser -k "$port/tcp" || true
+        fi
+    done
+    
     # Reload systemd daemon
     systemctl daemon-reload
     
-    print_status "Cleanup completed."
+    # Verify cleanup
+    if pgrep nginx > /dev/null || lsof -i :80 > /dev/null 2>&1 || lsof -i :443 > /dev/null 2>&1; then
+        print_error "Some processes could not be cleaned up. Manual intervention required."
+        print_info "Try running these commands:"
+        print_info "sudo systemctl stop nginx"
+        print_info "sudo killall -9 nginx"
+        print_info "sudo rm /var/run/nginx.pid"
+        return 1
+    fi
+    
+    print_status "Cleanup completed successfully."
+    return 0
 }
 
 # Function to check if ports are available
