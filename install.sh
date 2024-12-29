@@ -369,17 +369,10 @@ main() {
         "$INSTALL_DIR/server/logs"
     )
 
+    # First create directories
     for dir in "${directories[@]}"; do
         mkdir -p "$dir" || {
             print_error "Failed to create directory $dir. Exiting."
-            exit 1
-        }
-        chown -R www-data:www-data "$dir" || {
-            print_error "Failed to set permissions for $dir. Exiting."
-            exit 1
-        }
-        chmod -R 755 "$dir" || {
-            print_error "Failed to set permissions for $dir. Exiting."
             exit 1
         }
     done
@@ -388,6 +381,29 @@ main() {
     print_status "Copying server files to installation directory..."
     cp -r ./server/* $INSTALL_DIR/server/ || {
         print_error "Failed to copy server files. Exiting."
+        exit 1
+    }
+
+    # Now set permissions after all files are in place
+    print_status "Setting correct permissions..."
+    chown -R www-data:www-data "$INSTALL_DIR" || {
+        print_error "Failed to set ownership for $INSTALL_DIR. Exiting."
+        exit 1
+    }
+
+    # Set base permissions
+    chmod -R 755 "$INSTALL_DIR" || {
+        print_error "Failed to set permissions for $INSTALL_DIR. Exiting."
+        exit 1
+    }
+
+    # Set more permissive permissions for specific directories
+    chmod 775 "$INSTALL_DIR/server/uploads" || {
+        print_error "Failed to set permissions for uploads directory. Exiting."
+        exit 1
+    }
+    chmod 775 "$INSTALL_DIR/server/logs" || {
+        print_error "Failed to set permissions for logs directory. Exiting."
         exit 1
     }
 
