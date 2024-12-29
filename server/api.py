@@ -246,12 +246,12 @@ if __name__ == '__main__':
         print("\nDevelopment endpoints enabled")
         print("=================================\n")
         
-        # In dev mode, use Flask's built-in server with flask_app
         flask_app.run(debug=current_config["DEV_MODE"], 
                      host=current_config["HOST"], 
                      port=current_config["PORT"])
     else:
-        # In production, uvicorn will use the 'app' instance directly
         print("\n=== Running in PRODUCTION mode ===")
+        print(f"Photos directory: {os.path.abspath(current_config['UPLOAD_FOLDER'])}")
+        print(f"Database: {os.path.abspath(current_config['DATABASE'])}")
         print("The application will be served by uvicorn")
         print("=================================\n")
