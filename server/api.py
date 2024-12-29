@@ -16,11 +16,18 @@ def create_app():
     log_handler = RotatingFileHandler(
         "requests.log", maxBytes=5 * 1024 * 1024, backupCount=5
     )  # 5MB per file, 5 backups
+
+    # Set up detailed logging
     logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(levelname)s - %(message)s",
+        level=logging.DEBUG,  # Change to DEBUG for more verbosity
+        format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
         handlers=[log_handler]
     )
+
+    # Enable Flask logger to use this configuration
+    flask_logger = logging.getLogger('flask.app')
+    flask_logger.setLevel(logging.DEBUG)  # Capture Flask internal debug logs
+
 
     # Middleware for logging requests
     @app.before_request
@@ -31,11 +38,10 @@ def create_app():
         body = request.get_data(as_text=True) or "No Body"
         client_ip = request.remote_addr
 
-        logging.info(
-            f"Incoming request from {client_ip}:\n"
-            f"Method: {method}\nURL: {url}\nHeaders: {headers}\nBody: {body}\n"
+        logging.debug(
+            f"Request received: {method} {url}\n"
+            f"Client IP: {client_ip}\nHeaders: {headers}\nBody: {body}"
         )
-
 
     # Middleware for logging responses
     @app.after_request
@@ -44,10 +50,16 @@ def create_app():
         headers = dict(response.headers)
         body = response.get_data(as_text=True) or "No Body"
 
-        logging.info(
-            f"Response:\nStatus Code: {status_code}\nHeaders: {headers}\nBody: {body}\n"
+        logging.debug(
+            f"Response sent:\nStatus Code: {status_code}\nHeaders: {headers}\nBody: {body}"
         )
         return response
+    
+    @app.errorhandler(Exception)
+    def handle_exception(e):
+        logging.exception(f"Unhandled Exception: {e}")
+        return jsonify({"error": "Internal Server Error"}), 500
+
 
     # Load configuration dynamically
     current_config = load_config()
@@ -267,6 +279,9 @@ def create_app():
                 return jsonify({'error': f'Failed to send command: {str(e)}'}), 500
 
     return app
+
+
+
 
 def allowed_file(filename):
     if '.' not in filename:
